@@ -1,0 +1,11 @@
+// Prisma Schema for SevaSetu
+// PostgreSQL Datasource & Client Generator Configuration
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
