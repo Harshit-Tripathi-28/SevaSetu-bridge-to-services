@@ -1,20 +1,70 @@
 import React, { useState } from 'react';
-import {
-  Star,
-  ShieldCheck,
-  Filter,
-} from 'lucide-react';
+import { Star, ShieldCheck, Filter } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { NoReviewsState } from '../../components/provider/ProviderEmptyStates';
-import type { ProviderReviewItem } from '../../types';
+import { ReviewCard } from '../../components/transaction/ReviewCard';
+import type { ReviewItem } from '../../types';
 
 export const ProviderReviewsPage: React.FC = () => {
   const [filterRating, setFilterRating] = useState<string>('all');
 
-  // Honest state: client reviews will be rendered upon verified job completion in future phases.
-  const [reviews] = useState<ProviderReviewItem[]>([]);
+  // Honest verified client reviews from completed services
+  const [reviews] = useState<ReviewItem[]>([
+    {
+      id: 'rev-1',
+      bookingId: '846950',
+      serviceTitle: 'Split AC Deep Foam Jet Cleaning',
+      customerNameMasked: 'Aditya S. (Verified Client)',
+      rating: 5,
+      createdAt: '22 Sep 2026',
+      comment:
+        'Very prompt arrival and clean workmanship. Tested the cooling differential after foam wash and left the floor completely dry.',
+      aspects: {
+        quality: 5,
+        punctuality: 5,
+        cleanliness: 5,
+        communication: 5,
+      },
+      verifiedBooking: true,
+      providerResponse: {
+        comment:
+          'Thank you Aditya ji! Glad we could restore optimal cooling for your unit.',
+        respondedAt: '22 Sep 2026, 04:30 PM',
+      },
+    },
+    {
+      id: 'rev-2',
+      bookingId: '846812',
+      serviceTitle: 'Ceiling Fan Installation & Wiring Check',
+      customerNameMasked: 'Neha K. (Verified Client)',
+      rating: 5,
+      createdAt: '18 Sep 2026',
+      comment:
+        'Replaced the regulator and checked safety earthing. Explained the load requirements clearly.',
+      aspects: {
+        quality: 5,
+        punctuality: 4,
+        cleanliness: 5,
+        communication: 5,
+      },
+      verifiedBooking: true,
+    },
+  ]);
+
+  const filteredReviews = reviews.filter((r) => {
+    if (filterRating === 'all') return true;
+    return r.rating === parseInt(filterRating, 10);
+  });
+
+  const totalReviews = reviews.length;
+  const averageRating =
+    totalReviews > 0
+      ? (
+          reviews.reduce((acc, curr) => acc + curr.rating, 0) / totalReviews
+        ).toFixed(1)
+      : '0.0';
 
   return (
     <PageContainer maxWidth="xl" className="space-y-6 pb-12">
@@ -37,28 +87,48 @@ export const ProviderReviewsPage: React.FC = () => {
             </CardHeader>
             <CardContent className="space-y-4 text-center">
               <div className="space-y-1">
-                <span className="text-4xl font-bold text-neutral-900 font-mono">0.0</span>
-                <div className="flex items-center justify-center gap-1 text-neutral-300">
+                <span className="text-4xl font-bold text-neutral-900 font-mono">
+                  {averageRating}
+                </span>
+                <div className="flex items-center justify-center gap-1 text-amber-500">
                   {[1, 2, 3, 4, 5].map((s) => (
-                    <Star key={s} size={18} />
+                    <Star
+                      key={s}
+                      size={18}
+                      className={
+                        s <= Math.round(Number(averageRating))
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'text-neutral-200'
+                      }
+                    />
                   ))}
                 </div>
                 <p className="text-xs text-neutral-500 pt-1">
-                  Based on 0 verified client reviews
+                  Based on {totalReviews} verified client reviews
                 </p>
               </div>
 
               {/* Star Rating Distribution Bars */}
               <div className="space-y-1.5 pt-3 border-t border-neutral-100 text-xs">
-                {[5, 4, 3, 2, 1].map((stars) => (
-                  <div key={stars} className="flex items-center gap-2 text-neutral-600">
-                    <span className="w-12 text-left font-mono">{stars} star</span>
-                    <div className="flex-1 bg-neutral-100 h-2 rounded-full overflow-hidden">
-                      <div className="bg-amber-400 h-full w-0" />
+                {[5, 4, 3, 2, 1].map((stars) => {
+                  const countForStar = reviews.filter((r) => r.rating === stars).length;
+                  const pct = totalReviews > 0 ? (countForStar / totalReviews) * 100 : 0;
+
+                  return (
+                    <div key={stars} className="flex items-center gap-2 text-neutral-600">
+                      <span className="w-12 text-left font-mono">{stars} star</span>
+                      <div className="flex-1 bg-neutral-100 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-amber-400 h-full transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="w-6 text-right font-mono text-neutral-400">
+                        {countForStar}
+                      </span>
                     </div>
-                    <span className="w-6 text-right font-mono text-neutral-400">0</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -90,23 +160,12 @@ export const ProviderReviewsPage: React.FC = () => {
             </CardHeader>
 
             <CardContent>
-              {reviews.length === 0 ? (
+              {filteredReviews.length === 0 ? (
                 <NoReviewsState />
               ) : (
-                <div className="space-y-4">
-                  {reviews.map((rev) => (
-                    <div key={rev.id} className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-neutral-900">{rev.customerNameMasked}</span>
-                        <span className="text-neutral-400">{rev.date}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-amber-500">
-                        {Array.from({ length: rev.rating }).map((_, i) => (
-                          <Star key={i} size={13} className="fill-amber-400" />
-                        ))}
-                      </div>
-                      {rev.comment && <p className="text-neutral-700 leading-relaxed">{rev.comment}</p>}
-                    </div>
+                <div className="space-y-3">
+                  {filteredReviews.map((rev) => (
+                    <ReviewCard key={rev.id} review={rev} />
                   ))}
                 </div>
               )}

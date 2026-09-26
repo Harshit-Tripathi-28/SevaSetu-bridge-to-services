@@ -10,16 +10,19 @@ import {
   PlayCircle,
   CheckCheck,
   Phone,
-  ShieldCheck,
+  MessageSquare,
+  Receipt,
+  Wallet,
 } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { JobStatusBadge } from '../../components/provider/ProviderStatusBadge';
 import { JobTimeline } from '../../components/provider/JobTimeline';
 import { JobCompletionForm } from '../../components/provider/JobCompletionForm';
+import { PaymentStatusBadge } from '../../components/transaction/PaymentStatusBadge';
 import type { ProviderJobItem, ProviderJobStatus } from '../../types';
 
 export const ProviderJobDetailPage: React.FC = () => {
@@ -73,11 +76,18 @@ export const ProviderJobDetailPage: React.FC = () => {
           { label: `#${jobId}` },
         ]}
         actions={
-          <Link to="/provider/jobs">
-            <Button variant="outline" size="sm" leftIcon={<ArrowLeft size={14} />}>
-              Back to Jobs
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/provider/messages">
+              <Button variant="outline" size="sm" leftIcon={<MessageSquare size={14} />}>
+                Message Client
+              </Button>
+            </Link>
+            <Link to="/provider/jobs">
+              <Button variant="outline" size="sm" leftIcon={<ArrowLeft size={14} />}>
+                Back to Jobs
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -88,7 +98,13 @@ export const ProviderJobDetailPage: React.FC = () => {
           <Card variant="default" padding="md" className="bg-white space-y-4">
             <CardHeader className="pb-3 border-b border-neutral-100">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Badge variant="info" size="sm">{sampleJob.category}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="info" size="sm">{sampleJob.category}</Badge>
+                  <PaymentStatusBadge
+                    status={jobStatus === 'completed' ? 'paid' : 'authorized'}
+                    size="sm"
+                  />
+                </div>
                 <JobStatusBadge status={sampleJob.status} />
               </div>
               <CardTitle className="text-lg pt-1">{sampleJob.serviceTitle}</CardTitle>
@@ -98,85 +114,69 @@ export const ProviderJobDetailPage: React.FC = () => {
             <CardContent className="space-y-5 text-xs text-neutral-700">
               {/* Timeline Stepper */}
               <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 block">
-                  Service Execution Stage
-                </span>
-                <JobTimeline currentStatus={sampleJob.status} />
+                <span className="font-semibold text-neutral-900 block pb-1">Dispatch &amp; Job Status</span>
+                <JobTimeline currentStatus={jobStatus} />
               </div>
 
-              {/* Schedule and Customer Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-neutral-200/80">
-                <div className="space-y-1">
-                  <span className="text-neutral-500 text-[11px] block">Scheduled Appointment</span>
-                  <div className="flex items-center gap-2 text-neutral-900 font-semibold">
-                    <Calendar size={14} className="text-neutral-400" />
-                    <span>{sampleJob.scheduledDate}</span>
+              {/* Client & Location Card */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-3.5 rounded-xl border border-neutral-200 bg-white space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-semibold text-neutral-900 pb-1 border-b border-neutral-100">
+                    <User size={13} className="text-neutral-500" />
+                    <span>Client Details</span>
                   </div>
-                  <div className="flex items-center gap-2 text-neutral-600 font-mono">
-                    <Clock size={14} className="text-neutral-400" />
-                    <span>{sampleJob.scheduledTime}</span>
-                  </div>
+                  <p className="font-medium text-neutral-900">{sampleJob.customerNameMasked}</p>
+                  <p className="text-neutral-500 flex items-center gap-1 font-mono">
+                    <Phone size={11} /> +91 98*** **321 (Masked Relay)
+                  </p>
                 </div>
 
-                <div className="space-y-1">
-                  <span className="text-neutral-500 text-[11px] block">Client Contact</span>
-                  <div className="flex items-center gap-2 text-neutral-900 font-semibold">
-                    <User size={14} className="text-neutral-400" />
-                    <span>{sampleJob.customerNameMasked}</span>
+                <div className="p-3.5 rounded-xl border border-neutral-200 bg-white space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-semibold text-neutral-900 pb-1 border-b border-neutral-100">
+                    <Calendar size={13} className="text-neutral-500" />
+                    <span>Appointment Schedule</span>
                   </div>
-                  <div className="flex items-center gap-2 text-primary-700">
-                    <Phone size={13} className="text-primary-600" />
-                    <span className="font-mono">+91 98••••••45</span>
-                  </div>
-                </div>
-
-                <div className="sm:col-span-2 pt-2 border-t border-neutral-100 flex items-start gap-2">
-                  <MapPin size={14} className="text-neutral-400 shrink-0 mt-0.5" />
-                  <p className="font-medium text-neutral-900 leading-snug">
-                    {sampleJob.location}
+                  <p className="font-medium text-neutral-900">{sampleJob.scheduledDate}</p>
+                  <p className="text-neutral-500 flex items-center gap-1">
+                    <Clock size={11} /> {sampleJob.scheduledTime} ({sampleJob.duration})
                   </p>
                 </div>
               </div>
 
-              {/* Recorded Completion Notes if Complete */}
-              {completionNotes && (
-                <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">
-                  <span className="font-semibold text-emerald-900 text-xs block flex items-center gap-1.5">
-                    <CheckCheck size={15} className="text-emerald-700" />
-                    <span>Work Handover Notes</span>
-                  </span>
-                  <p className="text-neutral-800 text-xs leading-relaxed">
-                    {completionNotes}
-                  </p>
+              {/* Service Address */}
+              <div className="p-3.5 rounded-xl border border-neutral-200 bg-white flex items-start gap-2.5">
+                <MapPin size={16} className="text-primary-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-neutral-900 block">Service Location:</span>
+                  <span className="text-neutral-600 leading-relaxed">{sampleJob.location}</span>
+                </div>
+              </div>
+
+              {/* Work Notes upon completion */}
+              {sampleJob.workNotes && (
+                <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200 space-y-1">
+                  <span className="font-semibold text-neutral-900 block">Handover Inspection Notes:</span>
+                  <p className="text-neutral-600 italic leading-relaxed">{sampleJob.workNotes}</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Job Completion Form Modal/Drawer Area */}
+          {/* Job Completion Form Modal */}
           {showCompletionForm && (
-            <JobCompletionForm
-              jobId={sampleJob.id}
-              serviceTitle={sampleJob.serviceTitle}
-              onComplete={handleCompleteSuccess}
-              onCancel={() => setShowCompletionForm(false)}
-            />
-          )}
-
-          {/* Trust & Safety Guidance */}
-          <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-600 flex items-start gap-2.5">
-            <ShieldCheck size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold text-neutral-800">On-Site Security Protocol</p>
-              <p className="leading-relaxed">
-                Ensure safety gear (insulated tools, safety footwear) is utilized during execution. Client satisfaction confirmation is sent automatically via SMS/push when you complete the job.
-              </p>
+            <div className="p-5 rounded-2xl border-2 border-emerald-500 bg-white shadow-lg space-y-3">
+              <JobCompletionForm
+                jobId={sampleJob.id}
+                serviceTitle={sampleJob.serviceTitle}
+                onComplete={handleCompleteSuccess}
+                onCancel={() => setShowCompletionForm(false)}
+              />
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Right Column: Status Transition Actions */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* Right Column: Execution Controls & Earnings Breakdown */}
+        <div className="lg:col-span-4 space-y-4">
           <Card variant="default" padding="md" className="bg-white space-y-4">
             <CardHeader className="pb-3 border-b border-neutral-100">
               <CardTitle className="text-base">Job Progression Controls</CardTitle>
@@ -235,21 +235,47 @@ export const ProviderJobDetailPage: React.FC = () => {
               )}
 
               {jobStatus === 'completed' && (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-1">
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-2">
                   <CheckCheck size={24} className="text-emerald-600 mx-auto" />
                   <h4 className="font-semibold text-xs text-emerald-950">Job Successfully Completed</h4>
                   <p className="text-[11px] text-emerald-800">
                     Handover recorded. Final payment settlement scheduled in earnings balance.
                   </p>
+                  <Link to={`/invoice/INV-${jobId}`} className="block pt-1">
+                    <Button variant="outline" size="sm" leftIcon={<Receipt size={13} />} className="w-full text-xs">
+                      View Official Job Invoice
+                    </Button>
+                  </Link>
                 </div>
               )}
             </CardContent>
 
-            <CardFooter className="pt-3 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
-              <span>Service Fee:</span>
-              <span className="font-bold text-neutral-900 text-sm">₹{sampleJob.price}</span>
-            </CardFooter>
+            {/* Payout & Financial Transparency Card */}
+            <div className="pt-3 border-t border-neutral-100 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-neutral-500">
+                <span className="flex items-center gap-1">
+                  <Wallet size={12} />
+                  <span>Gross Job Value:</span>
+                </span>
+                <span className="font-mono text-neutral-900 font-medium">₹{sampleJob.price}</span>
+              </div>
+              <div className="flex items-center justify-between text-neutral-500">
+                <span>Platform Commission (10%):</span>
+                <span className="font-mono text-neutral-700">-₹{(sampleJob.price! * 0.1).toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between font-bold text-neutral-900 pt-1 border-t border-neutral-100">
+                <span>Net Payout to Bank:</span>
+                <span className="font-mono text-sm text-emerald-700">₹{(sampleJob.price! * 0.9).toFixed(2)}</span>
+              </div>
+            </div>
           </Card>
+
+          {/* Quick Chat Link */}
+          <Link to="/provider/messages" className="block">
+            <Button variant="outline" size="md" className="w-full text-xs" leftIcon={<MessageSquare size={14} />}>
+              Open Coordination Chat
+            </Button>
+          </Link>
         </div>
       </div>
     </PageContainer>

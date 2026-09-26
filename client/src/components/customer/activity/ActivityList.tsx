@@ -5,11 +5,17 @@ import { EmptyState } from '../../ui/EmptyState';
 import { Button } from '../../ui/Button';
 import { ActivityItemCard } from './ActivityItemCard';
 import { cn } from '../../../lib/utils';
-import type { CustomerActivityItem, ActivityStatus } from '../../../types';
+import type { CustomerActivityItem, ActivityStatus, PaymentStatus } from '../../../types';
 
 export interface ActivityListProps {
-  items?: CustomerActivityItem[];
+  items?: (CustomerActivityItem & {
+    paymentStatus?: PaymentStatus;
+    invoiceId?: string;
+    hasReviewed?: boolean;
+  })[];
   isLoading?: boolean;
+  onRebook?: (item: CustomerActivityItem) => void;
+  onCancelBooking?: (item: CustomerActivityItem) => void;
 }
 
 type FilterTab = 'all' | ActivityStatus;
@@ -17,6 +23,8 @@ type FilterTab = 'all' | ActivityStatus;
 export const ActivityList: React.FC<ActivityListProps> = ({
   items = [],
   isLoading = false,
+  onRebook,
+  onCancelBooking,
 }) => {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
@@ -67,7 +75,12 @@ export const ActivityList: React.FC<ActivityListProps> = ({
       ) : filteredItems.length > 0 ? (
         <div className="space-y-3">
           {filteredItems.map((item) => (
-            <ActivityItemCard key={item.id} item={item} />
+            <ActivityItemCard
+              key={item.id}
+              item={item}
+              onRebook={onRebook}
+              onCancelBooking={onCancelBooking}
+            />
           ))}
         </div>
       ) : (

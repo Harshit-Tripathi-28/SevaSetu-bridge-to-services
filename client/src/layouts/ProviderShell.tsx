@@ -14,9 +14,12 @@ import {
   ArrowLeftRight,
   Shield,
   PanelLeft,
+  MessageSquare,
+  Bell,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { NotificationBadge } from '../components/notifications';
 import { cn } from '../lib/utils';
 import type { NavItem } from '../components/navigation/types';
 
@@ -24,11 +27,13 @@ export const PROVIDER_NAV_ITEMS: NavItem[] = [
   { label: 'Overview', href: '/provider', icon: <LayoutDashboard size={15} /> },
   { label: 'Requests', href: '/provider/requests', icon: <Inbox size={15} /> },
   { label: 'Jobs', href: '/provider/jobs', icon: <Briefcase size={15} /> },
+  { label: 'Messages', href: '/provider/messages', icon: <MessageSquare size={15} /> },
   { label: 'Availability', href: '/provider/availability', icon: <CalendarClock size={15} /> },
   { label: 'Services', href: '/provider/services', icon: <Wrench size={15} /> },
   { label: 'Profile', href: '/provider/profile', icon: <User size={15} /> },
   { label: 'Earnings', href: '/provider/earnings', icon: <Wallet size={15} /> },
   { label: 'Reviews', href: '/provider/reviews', icon: <Star size={15} /> },
+  { label: 'Alerts', href: '/provider/notifications', icon: <Bell size={15} /> },
 ];
 
 export interface ProviderShellProps {
@@ -105,7 +110,27 @@ export const ProviderShell: React.FC<ProviderShellProps> = ({ children }) => {
           </nav>
 
           {/* Action Area & Mode Switcher */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Quick Messages Link */}
+            <Link
+              to="/provider/messages"
+              title="Provider Messages"
+              aria-label="Provider Messages"
+              className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            >
+              <MessageSquare size={18} />
+            </Link>
+
+            {/* Quick Notifications Link */}
+            <Link
+              to="/provider/notifications"
+              title="Notifications & Alerts"
+              aria-label="Provider Notifications"
+              className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            >
+              <NotificationBadge count={2} size={18} />
+            </Link>
+
             {/* Switch to Customer Portal Mode */}
             <Link to="/">
               <Button

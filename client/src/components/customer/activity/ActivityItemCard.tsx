@@ -1,50 +1,82 @@
 import React from 'react';
-import { Calendar, Clock, MapPin, Repeat, ArrowRight } from 'lucide-react';
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Repeat,
+  Receipt,
+  MessageSquare,
+  Star,
+  CreditCard,
+  XCircle,
+} from 'lucide-react';
 import { Card, CardContent } from '../../ui/Card';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
+import { PaymentStatusBadge } from '../../transaction/PaymentStatusBadge';
 import { Link } from 'react-router-dom';
-import type { CustomerActivityItem, ActivityStatus } from '../../../types';
+import type { CustomerActivityItem, ActivityStatus, PaymentStatus } from '../../../types';
 
 export interface ActivityItemCardProps {
-  item: CustomerActivityItem;
+  item: CustomerActivityItem & {
+    paymentStatus?: PaymentStatus;
+    invoiceId?: string;
+    hasReviewed?: boolean;
+  };
   onRebook?: (item: CustomerActivityItem) => void;
+  onCancelBooking?: (item: CustomerActivityItem) => void;
 }
 
-const statusBadgeConfig: Record<ActivityStatus, { variant: 'info' | 'warning' | 'success' | 'error' | 'neutral'; label: string }> = {
+const statusBadgeConfig: Record<
+  ActivityStatus,
+  { variant: 'info' | 'warning' | 'success' | 'error' | 'neutral'; label: string }
+> = {
   requested: { variant: 'info', label: 'Requested' },
   upcoming: { variant: 'warning', label: 'Upcoming' },
   in_progress: { variant: 'warning', label: 'In Progress' },
   completed: { variant: 'success', label: 'Completed' },
-  cancelled: { variant: 'error', label: 'Cancelled' },
+  cancelled: { variant: 'neutral', label: 'Cancelled' },
 };
 
-export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({ item, onRebook }) => {
+export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({
+  item,
+  onRebook,
+  onCancelBooking,
+}) => {
   const badge = statusBadgeConfig[item.status] || { variant: 'neutral', label: item.status };
 
   return (
     <Card variant="default" padding="none" className="hover:border-neutral-300 transition-colors">
       <CardContent className="p-4 sm:p-5 space-y-3">
+        {/* Top Header: Title, Status Badge, Price & Payment Status */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-100">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h4 className="font-semibold text-sm sm:text-base text-neutral-900 leading-tight">
                 {item.serviceTitle}
               </h4>
               <Badge variant={badge.variant} size="sm" withDot>
                 {badge.label}
               </Badge>
+              {item.paymentStatus && (
+                <PaymentStatusBadge status={item.paymentStatus} size="sm" />
+              )}
             </div>
-            <p className="text-xs text-neutral-600 mt-0.5">{item.categoryName}</p>
+            <p className="text-xs text-neutral-600 mt-0.5">
+              {item.categoryName} • Ref #{item.id}
+            </p>
           </div>
 
           {item.pricePaid !== undefined && (
-            <span className="font-bold text-sm text-neutral-900 font-mono">
-              ₹{item.pricePaid}
-            </span>
+            <div className="text-right">
+              <span className="font-bold text-sm text-neutral-900 font-mono block">
+                ₹{item.pricePaid.toFixed(2)}
+              </span>
+            </div>
           )}
         </div>
 
+        {/* Schedule & Location Metadata */}
         <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-600">
           {item.providerName && (
             <span className="font-medium text-neutral-800">
@@ -74,7 +106,45 @@ export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({ item, onRebo
           )}
         </div>
 
-        <div className="pt-2 flex items-center justify-end gap-2">
+        {/* Part 6 Integrated Action Row */}
+        <div className="pt-2 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-100">
+          {/* Action: Pay Now (if payment pending) */}
+          {item.paymentStatus === 'pending' && item.status !== 'cancelled' && (
+            <Link to={`/payment/${item.id}`}>
+              <Button size="sm" variant="primary" leftIcon={<CreditCard size={13} />}>
+                Complete Payment
+              </Button>
+            </Link>
+          )}
+
+          {/* Action: Message Provider */}
+          {(item.status === 'upcoming' || item.status === 'in_progress') && (
+            <Link to="/messages">
+              <Button size="sm" variant="outline" leftIcon={<MessageSquare size={13} />}>
+                Chat Provider
+              </Button>
+            </Link>
+          )}
+
+          {/* Action: Invoice (if completed or paid) */}
+          {item.status === 'completed' && (
+            <Link to={`/invoice/${item.invoiceId || 'INV-' + item.id}`}>
+              <Button size="sm" variant="outline" leftIcon={<Receipt size={13} />}>
+                Invoice
+              </Button>
+            </Link>
+          )}
+
+          {/* Action: Review (if completed) */}
+          {item.status === 'completed' && !item.hasReviewed && (
+            <Link to={`/reviews/${item.id}`}>
+              <Button size="sm" variant="outline" leftIcon={<Star size={13} />}>
+                Rate Service
+              </Button>
+            </Link>
+          )}
+
+          {/* Action: Rebook (if completed and canRebook) */}
           {item.canRebook && (
             <Button
               size="sm"
@@ -86,11 +156,18 @@ export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({ item, onRebo
             </Button>
           )}
 
-          <Link to={`/request`}>
-            <Button size="sm" variant="ghost" rightIcon={<ArrowRight size={13} />}>
-              Service Details
+          {/* Action: Cancel Booking (if upcoming or requested) */}
+          {(item.status === 'requested' || item.status === 'upcoming') && onCancelBooking && (
+            <Button
+              size="sm"
+              variant="ghost"
+              leftIcon={<XCircle size={13} className="text-rose-600" />}
+              onClick={() => onCancelBooking(item)}
+              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+            >
+              Cancel
             </Button>
-          </Link>
+          )}
         </div>
       </CardContent>
     </Card>
