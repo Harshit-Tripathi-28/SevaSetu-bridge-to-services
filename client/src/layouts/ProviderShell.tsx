@@ -14,9 +14,11 @@ import {
   ArrowLeftRight,
   Shield,
   PanelLeft,
-  MessageSquare,
   Bell,
+  LogOut,
+  MessageSquare,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { NotificationBadge } from '../components/notifications';
@@ -43,6 +45,7 @@ export interface ProviderShellProps {
 export const ProviderShell: React.FC<ProviderShellProps> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const { user, logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans flex flex-col antialiased selection:bg-primary-100 selection:text-primary-900">
@@ -154,6 +157,18 @@ export const ProviderShell: React.FC<ProviderShellProps> = ({ children }) => {
                 Admin
               </Button>
             </Link>
+
+            {user && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={logout}
+                leftIcon={<LogOut size={13} />}
+                className="text-xs h-8 text-neutral-600 hover:text-red-700"
+              >
+                Sign Out
+              </Button>
+            )}
 
             {/* Desktop Sidebar Toggle */}
             <Button

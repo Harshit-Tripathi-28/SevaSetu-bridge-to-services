@@ -15,13 +15,37 @@ export interface ServerConfig {
   nodeEnv: 'development' | 'production' | 'test';
   clientUrl: string;
   databaseUrl: string;
+  authSecret: string;
+  cookieName: string;
+  cookieOptions: {
+    httpOnly: boolean;
+    secure: boolean;
+    sameSite: 'lax' | 'strict' | 'none';
+    maxAge: number;
+    path: string;
+  };
+  jwtExpiresIn: string;
+  saltRounds: number;
 }
+
+const nodeEnv = (process.env.NODE_ENV as ServerConfig['nodeEnv']) || 'development';
 
 export const config: ServerConfig = {
   port: Number(process.env.PORT) || 5000,
-  nodeEnv: (process.env.NODE_ENV as ServerConfig['nodeEnv']) || 'development',
+  nodeEnv,
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   databaseUrl: process.env.DATABASE_URL || '',
+  authSecret: process.env.AUTH_SECRET || 'sevasetu_jwt_dev_secret_key_2026_super_secure',
+  cookieName: 'sevasetu_auth',
+  cookieOptions: {
+    httpOnly: true,
+    secure: nodeEnv === 'production',
+    sameSite: nodeEnv === 'production' ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+    path: '/',
+  },
+  jwtExpiresIn: '7d',
+  saltRounds: 10,
 };
 
 export function validateConfig(): void {

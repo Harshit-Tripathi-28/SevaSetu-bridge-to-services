@@ -17,7 +17,9 @@ import {
   ArrowLeftRight,
   ShieldCheck,
   PanelLeft,
+  LogOut,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { cn } from '../lib/utils';
@@ -45,6 +47,7 @@ export const AdminShell: React.FC<AdminShellProps> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   // Simple breadcrumb derived from path
   const pathSegments = location.pathname.split('/').filter(Boolean);
@@ -122,6 +125,18 @@ export const AdminShell: React.FC<AdminShellProps> = ({ children }) => {
                 Provider Portal
               </Button>
             </Link>
+
+            {user && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={logout}
+                leftIcon={<LogOut size={13} />}
+                className="text-xs h-8 text-neutral-600 hover:text-red-700"
+              >
+                Sign Out
+              </Button>
+            )}
 
             {/* Mobile Navigation Trigger Button */}
             <Button

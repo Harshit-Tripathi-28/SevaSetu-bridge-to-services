@@ -31,6 +31,49 @@ export interface HealthStatus {
 }
 
 /**
+ * Authentication & Authorization Role and Status Types
+ * Single source of truth across client and server.
+ */
+
+export type UserRole = 'CUSTOMER' | 'PROVIDER' | 'ADMIN';
+
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  fullName: string | null;
+  phone: string | null;
+  role: UserRole;
+  status: AccountStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  fullName?: string;
+  phone?: string;
+  role?: 'CUSTOMER' | 'PROVIDER'; // Public self-registration only allows CUSTOMER or PROVIDER
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponseData {
+  user: AuthUser;
+}
+
+export interface AuthState {
+  user: AuthUser | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+}
+
+/**
  * Customer Experience & Service Domain Interfaces
  * Ready for future backend service endpoints.
  */

@@ -27,6 +27,7 @@ export async function request<T>(endpoint: string, options?: RequestInit): Promi
 
   try {
     const response = await fetch(url, {
+      credentials: 'include',
       ...options,
       headers: {
         'Content-Type': 'application/json',
