@@ -10,48 +10,8 @@ import type { ReviewItem } from '../../types';
 export const ProviderReviewsPage: React.FC = () => {
   const [filterRating, setFilterRating] = useState<string>('all');
 
-  // Honest verified client reviews from completed services
-  const [reviews] = useState<ReviewItem[]>([
-    {
-      id: 'rev-1',
-      bookingId: '846950',
-      serviceTitle: 'Split AC Deep Foam Jet Cleaning',
-      customerNameMasked: 'Aditya S. (Verified Client)',
-      rating: 5,
-      createdAt: '22 Sep 2026',
-      comment:
-        'Very prompt arrival and clean workmanship. Tested the cooling differential after foam wash and left the floor completely dry.',
-      aspects: {
-        quality: 5,
-        punctuality: 5,
-        cleanliness: 5,
-        communication: 5,
-      },
-      verifiedBooking: true,
-      providerResponse: {
-        comment:
-          'Thank you Aditya ji! Glad we could restore optimal cooling for your unit.',
-        respondedAt: '22 Sep 2026, 04:30 PM',
-      },
-    },
-    {
-      id: 'rev-2',
-      bookingId: '846812',
-      serviceTitle: 'Ceiling Fan Installation & Wiring Check',
-      customerNameMasked: 'Neha K. (Verified Client)',
-      rating: 5,
-      createdAt: '18 Sep 2026',
-      comment:
-        'Replaced the regulator and checked safety earthing. Explained the load requirements clearly.',
-      aspects: {
-        quality: 5,
-        punctuality: 4,
-        cleanliness: 5,
-        communication: 5,
-      },
-      verifiedBooking: true,
-    },
-  ]);
+  // Honest verified client reviews from completed services (empty initial state per data integrity audit)
+  const [reviews] = useState<ReviewItem[]>([]);
 
   const filteredReviews = reviews.filter((r) => {
     if (filterRating === 'all') return true;

@@ -26,46 +26,13 @@ export const MessagesPage: React.FC<MessagesPageProps> = ({
   const navigate = useNavigate();
 
   const [selectedId, setSelectedId] = useState<string>(
-    conversationId || 'conv-101'
+    conversationId || ''
   );
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isMobileListOpen, setIsMobileListOpen] = useState(!conversationId);
 
-  // Data-driven conversations list (authentic customer ↔ provider thread)
-  const [conversations, setConversations] = useState<ConversationSummary[]>([
-    {
-      id: 'conv-101',
-      otherPartyId: userRole === 'customer' ? 'prov-101' : 'cust-202',
-      otherPartyName:
-        userRole === 'customer'
-          ? 'Ramesh Sharma (Electrician)'
-          : 'Priya Sharma (Client)',
-      otherPartyRole: userRole === 'customer' ? 'provider' : 'customer',
-      serviceTitle: 'Electrical Fixture & Switchboard Repair',
-      lastMessage: 'I have arrived at the society main gate.',
-      lastMessageTime: '10:15 AM',
-      unreadCount: 1,
-      bookingReference: 'REQ-847291',
-      bookingStatus: 'in_progress',
-      isOnline: true,
-    },
-    {
-      id: 'conv-102',
-      otherPartyId: userRole === 'customer' ? 'prov-102' : 'cust-203',
-      otherPartyName:
-        userRole === 'customer'
-          ? 'Suresh Kumar (Plumber)'
-          : 'Anand Verma (Client)',
-      otherPartyRole: userRole === 'customer' ? 'provider' : 'customer',
-      serviceTitle: 'Bathroom Tap Leakage & Valve Repair',
-      lastMessage: 'Will carry the half-inch brass connector.',
-      lastMessageTime: 'Yesterday',
-      unreadCount: 0,
-      bookingReference: 'REQ-847110',
-      bookingStatus: 'scheduled',
-      isOnline: false,
-    },
-  ]);
+  // Data-driven conversations list (empty initial state per data integrity audit)
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
 
   // Context metadata for current conversation
   const activeConversation = conversations.find((c) => c.id === selectedId);
@@ -80,76 +47,8 @@ export const MessagesPage: React.FC<MessagesPageProps> = ({
       }
     : undefined;
 
-  // Active messages thread
-  const [messages, setMessages] = useState<Record<string, MessageItem[]>>({
-    'conv-101': [
-      {
-        id: 'msg-1',
-        conversationId: 'conv-101',
-        senderId: 'system',
-        senderRole: 'system',
-        senderName: 'SevaSetu System',
-        content:
-          'Service Booking #REQ-847291 confirmed. Use this thread for arrival coordination and location details.',
-        timestamp: '09:00 AM',
-        status: 'read',
-      },
-      {
-        id: 'msg-2',
-        conversationId: 'conv-101',
-        senderId: userRole === 'customer' ? 'prov-101' : 'self',
-        senderRole: 'provider',
-        senderName: 'Ramesh Sharma',
-        content:
-          'Namaste! I am on the way to Sector 14 with necessary switchboard spares.',
-        timestamp: '09:45 AM',
-        status: 'read',
-      },
-      {
-        id: 'msg-3',
-        conversationId: 'conv-101',
-        senderId: userRole === 'customer' ? 'self' : 'cust-202',
-        senderRole: 'customer',
-        senderName: 'Priya Sharma',
-        content:
-          'Great, please inform the security guard at Gate 2 for tower C entry.',
-        timestamp: '09:48 AM',
-        status: 'read',
-      },
-      {
-        id: 'msg-4',
-        conversationId: 'conv-101',
-        senderId: userRole === 'customer' ? 'prov-101' : 'self',
-        senderRole: 'provider',
-        senderName: 'Ramesh Sharma',
-        content: 'I have arrived at the society main gate.',
-        timestamp: '10:15 AM',
-        status: 'delivered',
-      },
-    ],
-    'conv-102': [
-      {
-        id: 'msg-102-1',
-        conversationId: 'conv-102',
-        senderId: 'system',
-        senderRole: 'system',
-        senderName: 'SevaSetu System',
-        content: 'Service Booking #REQ-847110 scheduled for tomorrow.',
-        timestamp: 'Yesterday',
-        status: 'read',
-      },
-      {
-        id: 'msg-102-2',
-        conversationId: 'conv-102',
-        senderId: userRole === 'customer' ? 'prov-102' : 'self',
-        senderRole: 'provider',
-        senderName: 'Suresh Kumar',
-        content: 'Will carry the half-inch brass connector.',
-        timestamp: 'Yesterday',
-        status: 'read',
-      },
-    ],
-  });
+  // Active messages thread (empty initial state per data integrity audit)
+  const [messages, setMessages] = useState<Record<string, MessageItem[]>>({});
 
   const handleSelectConversation = (id: string) => {
     setSelectedId(id);
@@ -170,7 +69,7 @@ export const MessagesPage: React.FC<MessagesPageProps> = ({
   };
 
   const handleSendMessage = (content: string, attachmentName?: string) => {
-    if (!content.trim() && !attachmentName) return;
+    if (!selectedId || (!content.trim() && !attachmentName)) return;
 
     const newMessage: MessageItem = {
       id: `msg-${Date.now()}`,

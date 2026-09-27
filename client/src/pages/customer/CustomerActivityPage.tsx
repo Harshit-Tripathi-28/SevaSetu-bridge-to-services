@@ -18,60 +18,14 @@ import type {
 } from '../../types';
 
 export const CustomerActivityPage: React.FC = () => {
-  // Activity state with integrated transaction & booking statuses
+  // Activity state with integrated transaction & booking statuses (empty initial state per data integrity audit)
   const [activityItems, setActivityItems] = useState<
     (CustomerActivityItem & {
       paymentStatus?: PaymentStatus;
       invoiceId?: string;
       hasReviewed?: boolean;
     })[]
-  >([
-    {
-      id: '847291',
-      serviceTitle: 'Electrical Fixture & Switchboard Repair',
-      categoryName: 'Electrician Services',
-      providerName: 'Ramesh Sharma',
-      status: 'in_progress',
-      scheduledDate: 'Today, 10:30 AM',
-      scheduledTime: 'Morning Slot',
-      location: 'Sector 14, Main Road',
-      pricePaid: 455.04,
-      paymentStatus: 'paid',
-      invoiceId: 'INV-847291',
-      canRebook: false,
-      createdAt: '26 Sep 2026',
-    },
-    {
-      id: '847110',
-      serviceTitle: 'Bathroom Tap Leakage & Valve Repair',
-      categoryName: 'Plumbing Services',
-      providerName: 'Suresh Kumar',
-      status: 'upcoming',
-      scheduledDate: 'Tomorrow, 02:00 PM',
-      scheduledTime: 'Afternoon Slot',
-      location: 'Sector 14, Main Road',
-      pricePaid: 349.0,
-      paymentStatus: 'pending',
-      canRebook: false,
-      createdAt: '25 Sep 2026',
-    },
-    {
-      id: '846950',
-      serviceTitle: 'Split AC Deep Foam Jet Cleaning',
-      categoryName: 'AC & Appliance Repair',
-      providerName: 'Manoj Tiwari',
-      status: 'completed',
-      scheduledDate: '22 Sep 2026',
-      scheduledTime: '11:00 AM',
-      location: 'Sector 14, Main Road',
-      pricePaid: 899.0,
-      paymentStatus: 'paid',
-      invoiceId: 'INV-846950',
-      hasReviewed: false,
-      canRebook: true,
-      createdAt: '22 Sep 2026',
-    },
-  ]);
+  >([]);
 
   // Modal control states
   const [rebookData, setRebookData] = useState<RebookSummaryData | null>(null);

@@ -31,23 +31,66 @@ export const Modal: React.FC<ModalProps> = ({
   className,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
 
-  // Close on Escape key
+  // Focus restoration & Escape key & Focus trapping
   useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = 'hidden';
+
+    // Focus first focusable element inside modal
+    const timer = setTimeout(() => {
+      if (modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstEl = focusable[0];
+        if (firstEl) {
+          firstEl.focus();
+        }
+      }
+    }, 50);
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
+      if (event.key === 'Escape') {
         onClose();
+        return;
+      }
+
+      if (event.key === 'Tab' && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (first && last) {
+          if (event.shiftKey && document.activeElement === first) {
+            last.focus();
+            event.preventDefault();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            first.focus();
+            event.preventDefault();
+          }
+        }
       }
     };
 
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-    }
+    document.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      clearTimeout(timer);
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'unset';
+      if (previousActiveElement.current) {
+        previousActiveElement.current.focus();
+      }
     };
   }, [isOpen, onClose]);
 
@@ -59,7 +102,7 @@ export const Modal: React.FC<ModalProps> = ({
       aria-modal="true"
       aria-labelledby={title ? 'modal-title' : undefined}
       aria-describedby={description ? 'modal-description' : undefined}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
     >
       {/* Backdrop */}
       <div
@@ -72,14 +115,14 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         ref={modalRef}
         className={cn(
-          'relative w-full bg-white rounded-xl shadow-xl border border-neutral-200 z-10 overflow-hidden transform transition-all',
+          'relative w-full max-h-[calc(100vh-2rem)] flex flex-col bg-white rounded-xl shadow-xl border border-neutral-200 z-10 overflow-hidden transform transition-all',
           sizeStyles[size],
           className
         )}
       >
         {/* Header */}
         {(title || description) && (
-          <div className="flex items-start justify-between p-6 border-b border-neutral-100">
+          <div className="flex items-start justify-between p-5 sm:p-6 border-b border-neutral-100 shrink-0">
             <div className="space-y-1 pr-6">
               {title && (
                 <h3 id="modal-title" className="text-lg font-semibold text-neutral-900 leading-tight">
@@ -96,7 +139,7 @@ export const Modal: React.FC<ModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label="Close dialog"
-              className="rounded-lg p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+              className="rounded-lg p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors cursor-pointer"
             >
               <X size={18} aria-hidden="true" />
             </button>
@@ -104,7 +147,7 @@ export const Modal: React.FC<ModalProps> = ({
         )}
 
         {/* Content */}
-        <div className="p-6">{children}</div>
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

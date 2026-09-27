@@ -38,11 +38,11 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary-600 text-white font-bold text-base shadow-xs select-none">
             S
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col min-w-0">
             <span className="font-bold text-base tracking-tight text-neutral-900 leading-tight">
               SevaSetu
             </span>
-            <span className="text-[10px] text-neutral-600 font-medium tracking-wide uppercase">
+            <span className="text-[10px] text-neutral-600 font-medium tracking-wide uppercase truncate">
               Bridge to Services
             </span>
           </div>
@@ -56,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Action Area Framework & Mobile Trigger */}
         <div className="flex items-center gap-2.5 shrink-0">
           {actionArea && (
-            <div className="hidden sm:flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {actionArea}
             </div>
           )}

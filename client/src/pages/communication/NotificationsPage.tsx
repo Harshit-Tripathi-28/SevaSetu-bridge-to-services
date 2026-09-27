@@ -18,47 +18,8 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'notifications' | 'preferences'>('notifications');
 
-  // Honest data-driven notifications list
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    {
-      id: 'notif-1',
-      category: 'service_status',
-      title: 'Technician is On the Way',
-      description: 'Ramesh Sharma has commenced transit toward Sector 14 for booking #REQ-847291.',
-      timestamp: '15 mins ago',
-      isRead: false,
-      actionUrl: '/messages/conv-101',
-      referenceId: 'REQ-847291',
-    },
-    {
-      id: 'notif-2',
-      category: 'payment_update',
-      title: 'Service Advance Authorized',
-      description: 'Your payment authorization of ₹455.04 has been held in platform escrow.',
-      timestamp: '1 hour ago',
-      isRead: false,
-      actionUrl: '/invoice/INV-847291',
-      referenceId: 'INV-847291',
-    },
-    {
-      id: 'notif-3',
-      category: 'review_reminder',
-      title: 'Rate Your Previous Service',
-      description: 'How was your plumbing repair service with Suresh Kumar on Sep 22?',
-      timestamp: '2 days ago',
-      isRead: true,
-      actionUrl: '/reviews/REQ-847110',
-      referenceId: 'REQ-847110',
-    },
-    {
-      id: 'notif-4',
-      category: 'system',
-      title: 'Monsoon Service Safety Standards',
-      description: 'All verified electrical partners adhere to weather-resistant outdoor gear protocol.',
-      timestamp: '3 days ago',
-      isRead: true,
-    },
-  ]);
+  // Honest data-driven notifications list (empty initial state per data integrity audit)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const handleMarkAsRead = (id: string) => {
     setNotifications((prev) =>

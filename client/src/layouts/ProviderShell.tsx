@@ -143,6 +143,18 @@ export const ProviderShell: React.FC<ProviderShellProps> = ({ children }) => {
               </Button>
             </Link>
 
+            {/* Switch to Operations Console */}
+            <Link to="/admin">
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Shield size={13} />}
+                className="text-xs h-8 hidden md:inline-flex"
+              >
+                Admin
+              </Button>
+            </Link>
+
             {/* Desktop Sidebar Toggle */}
             <Button
               variant={showSidebar ? 'secondary' : 'ghost'}

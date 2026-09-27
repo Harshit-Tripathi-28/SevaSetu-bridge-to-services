@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ApplicationShell } from './layouts/ApplicationShell';
 import { ProviderShell } from './layouts/ProviderShell';
+import { AdminShell } from './layouts/AdminShell';
 import { Button } from './components/ui/Button';
 import { EmptyState } from './components/ui/EmptyState';
 import { NotificationBadge } from './components/notifications';
@@ -49,10 +50,29 @@ import {
   MessagesPage,
   NotificationsPage,
 } from './pages/communication';
+import {
+  AdminOverviewPage,
+  AdminUsersPage,
+  AdminUserDetailPage,
+  AdminProvidersPage,
+  AdminProviderDetailPage,
+  AdminServicesPage,
+  AdminBookingsPage,
+  AdminBookingDetailPage,
+  AdminVerificationPage,
+  AdminVerificationDetailPage,
+  AdminDisputesPage,
+  AdminDisputeDetailPage,
+  AdminSupportPage,
+  AdminAuditLogsPage,
+  AdminTrustSafetyPage,
+  AdminSettingsPage,
+} from './pages/admin';
 import { ShellPreview } from './pages/ShellPreview';
 import { DesignSystemPreview } from './pages/DesignSystemPreview';
 import { HealthMonitor } from './pages/HealthMonitor';
 import type { NavItem } from './components/navigation/types';
+import { ShieldCheck } from 'lucide-react';
 
 // ==========================================
 // Customer Portal Layout Wrapper
@@ -68,6 +88,7 @@ const CustomerLayout: React.FC = () => {
     { label: 'Messages', href: '/messages', icon: <MessageSquare size={15} /> },
     { label: 'Alerts', href: '/notifications', icon: <Bell size={15} /> },
     { label: 'Partner Portal', href: '/provider', icon: <Briefcase size={15} /> },
+    { label: 'Operations Console', href: '/admin', icon: <ShieldCheck size={15} /> },
     { label: 'Health & DB', href: '/health', icon: <Activity size={15} /> },
     { label: 'Design System', href: '/design-system', icon: <Layers size={15} /> },
   ];
@@ -80,6 +101,7 @@ const CustomerLayout: React.FC = () => {
     { label: 'Messages', href: '/messages', icon: <MessageSquare size={15} /> },
     { label: 'Notifications', href: '/notifications', icon: <Bell size={15} /> },
     { label: 'Partner Portal', href: '/provider', icon: <Briefcase size={15} /> },
+    { label: 'Operations Console', href: '/admin', icon: <ShieldCheck size={15} /> },
     { label: 'System Health', href: '/health', icon: <Activity size={15} /> },
     { label: 'Design System', href: '/design-system', icon: <Layers size={15} /> },
     { label: 'Shell Layout', href: '/shell-preview', icon: <Layout size={15} /> },
@@ -120,7 +142,18 @@ const CustomerLayout: React.FC = () => {
               leftIcon={<Briefcase size={13} />}
               className="hidden sm:inline-flex text-xs h-8"
             >
-              Partner Portal
+              Partner
+            </Button>
+          </Link>
+
+          <Link to="/admin">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<ShieldCheck size={13} />}
+              className="hidden md:inline-flex text-xs h-8"
+            >
+              Admin
             </Button>
           </Link>
 
@@ -149,7 +182,7 @@ const CustomerLayout: React.FC = () => {
 };
 
 // ==========================================
-// Root App with Customer & Provider Shells
+// Root App with Customer, Provider & Admin Shells
 // ==========================================
 export const App: React.FC = () => {
   const [previewSidebar, setPreviewSidebar] = useState(false);
@@ -158,7 +191,29 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <Routes>
         {/* ========================================== */}
-        {/* 1. Service Provider Experience Routes      */}
+        {/* 1. Admin & Operations Experience Routes    */}
+        {/* ========================================== */}
+        <Route path="/admin" element={<AdminShell />}>
+          <Route index element={<AdminOverviewPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="users/:id" element={<AdminUserDetailPage />} />
+          <Route path="providers" element={<AdminProvidersPage />} />
+          <Route path="providers/:id" element={<AdminProviderDetailPage />} />
+          <Route path="services" element={<AdminServicesPage />} />
+          <Route path="bookings" element={<AdminBookingsPage />} />
+          <Route path="bookings/:id" element={<AdminBookingDetailPage />} />
+          <Route path="verification" element={<AdminVerificationPage />} />
+          <Route path="verification/:id" element={<AdminVerificationDetailPage />} />
+          <Route path="reports" element={<AdminDisputesPage />} />
+          <Route path="reports/:id" element={<AdminDisputeDetailPage />} />
+          <Route path="support" element={<AdminSupportPage />} />
+          <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+          <Route path="trust-safety" element={<AdminTrustSafetyPage />} />
+          <Route path="settings" element={<AdminSettingsPage />} />
+        </Route>
+
+        {/* ========================================== */}
+        {/* 2. Service Provider Experience Routes      */}
         {/* ========================================== */}
         <Route path="/provider" element={<ProviderShell />}>
           <Route index element={<ProviderOverviewPage />} />
@@ -177,7 +232,7 @@ export const App: React.FC = () => {
         </Route>
 
         {/* ========================================== */}
-        {/* 2. Customer Portal Experience Routes       */}
+        {/* 3. Customer Portal Experience Routes       */}
         {/* ========================================== */}
         <Route element={<CustomerLayout />}>
           <Route path="/" element={<CustomerHomePage />} />
@@ -216,7 +271,7 @@ export const App: React.FC = () => {
               <div className="flex-1 flex items-center justify-center p-6">
                 <EmptyState
                   title="Page Not Found"
-                  description="The requested page does not exist within the customer or provider portal."
+                  description="The requested page does not exist within the customer, partner, or admin portals."
                   action={
                     <div className="flex items-center gap-3">
                       <Link to="/">
@@ -227,6 +282,11 @@ export const App: React.FC = () => {
                       <Link to="/provider">
                         <Button size="sm" variant="outline" leftIcon={<Briefcase size={14} />}>
                           Provider Console
+                        </Button>
+                      </Link>
+                      <Link to="/admin">
+                        <Button size="sm" variant="outline" leftIcon={<ShieldCheck size={14} />}>
+                          Admin Console
                         </Button>
                       </Link>
                     </div>
