@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ShieldCheck,
   MapPin,
-  Clock,
-  Calendar,
   CheckCircle2,
   ArrowRight,
   MessageSquare,
   Award,
-  User,
+  Loader2,
+  AlertCircle,
+  Briefcase,
+  Sparkles,
 } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
@@ -19,18 +20,63 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Alert } from '../../components/ui/Alert';
+import { providerService } from '../../services/provider.service';
+import type { PublicProviderProfile, ProviderServiceAreaRecord } from '@sevasetu/shared';
 
 export const ProviderProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [showStructuralPreview, setShowStructuralPreview] = useState(false);
+  const [profile, setProfile] = useState<PublicProviderProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [requestNotice, setRequestNotice] = useState(false);
 
-  // In this phase, no real provider records exist in the database yet.
-  // We provide an honest empty state, plus a structural inspection mode for development verification.
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPublicProfile() {
+      if (!id) {
+        setError('No provider identifier specified.');
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await providerService.getPublicProfile(id);
+        if (isMounted) {
+          setProfile(data);
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          const message =
+            err instanceof Error
+              ? err.message
+              : 'Provider profile not found or onboarding incomplete.';
+          setError(message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+    loadPublicProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
 
-  if (!showStructuralPreview && (!id || id === 'demo' || id.startsWith('unregistered'))) {
+  if (loading) {
     return (
-      <PageContainer maxWidth="md" className="space-y-6">
+      <PageContainer maxWidth="md" className="py-16 text-center space-y-4">
+        <Loader2 size={32} className="animate-spin text-primary-600 mx-auto" />
+        <p className="text-sm text-neutral-600">Loading verified provider profile...</p>
+      </PageContainer>
+    );
+  }
+
+  if (error || !profile) {
+    return (
+      <PageContainer maxWidth="md" className="space-y-6 py-12">
         <PageHeader
           title="Provider Profile"
           description="Verified local service professional profile and credentials."
@@ -41,21 +87,22 @@ export const ProviderProfilePage: React.FC = () => {
         />
 
         <EmptyState
-          icon={<User size={28} className="text-neutral-400" />}
-          title={`No provider record registered for ID: ${id || 'unknown'}`}
-          description="Provider onboarding and credential verification will be implemented in upcoming platform phases. Real provider profiles will be displayed here once registered."
+          icon={<AlertCircle size={28} className="text-neutral-400" />}
+          title="Provider Profile Unavailable"
+          description={
+            error ||
+            'This provider profile does not exist, has not satisfied onboarding requirements, or is not currently listed for public discovery.'
+          }
           action={
             <div className="flex flex-col sm:flex-row items-center gap-2.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowStructuralPreview(true)}
-              >
-                Inspect Profile Layout Structure
-              </Button>
               <Link to="/services">
                 <Button variant="primary" size="sm">
-                  Browse Services
+                  Browse Available Services
+                </Button>
+              </Link>
+              <Link to="/request">
+                <Button variant="outline" size="sm">
+                  Submit Service Request
                 </Button>
               </Link>
             </div>
@@ -65,25 +112,23 @@ export const ProviderProfilePage: React.FC = () => {
     );
   }
 
+  const initials = profile.displayName
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
+
   return (
-    <PageContainer maxWidth="lg" className="space-y-8">
+    <PageContainer maxWidth="lg" className="space-y-8 pb-12">
       {/* Page Header */}
       <PageHeader
-        title="Professional Profile Presentation"
-        description="Structural presentation framework for verified service providers."
+        title={profile.displayName}
+        description="Verified local service professional registered on SevaSetu."
         breadcrumbs={[
           { label: 'Services', href: '/services' },
-          { label: `Provider (${id || 'Preview'})` },
+          { label: profile.displayName },
         ]}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowStructuralPreview(!showStructuralPreview)}
-          >
-            {showStructuralPreview ? 'Show Unloaded State' : 'Layout Structure Mode'}
-          </Button>
-        }
       />
 
       {requestNotice && (
@@ -93,7 +138,7 @@ export const ProviderProfilePage: React.FC = () => {
           onClose={() => setRequestNotice(false)}
         >
           <p className="text-xs sm:text-sm text-neutral-700">
-            Targeting a specific provider will be available when provider onboarding and availability schedules are active.
+            Targeting a specific provider will be available when scheduling and matching algorithms are active in upcoming platform phases.
           </p>
         </Alert>
       )}
@@ -102,36 +147,40 @@ export const ProviderProfilePage: React.FC = () => {
       <Card variant="default" padding="lg" className="bg-white">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b border-neutral-100">
           <div className="flex items-center gap-4">
-            <Avatar size="xl" initials="PR" status="online" />
+            <Avatar size="xl" initials={initials || 'PR'} status="online" />
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 leading-tight">
-                  Verified Service Professional
+                  {profile.displayName}
                 </h2>
                 <Badge variant="success" size="md" icon={<ShieldCheck size={14} />}>
-                  Verified Identity
+                  Onboarding Complete
                 </Badge>
               </div>
               <p className="text-sm text-neutral-600 font-medium">
-                Primary Category: Home Maintenance &amp; Repair
+                {profile.experienceYears} Years Professional Experience
               </p>
-              <div className="flex items-center gap-3 text-xs text-neutral-600 pt-1">
-                <span className="flex items-center gap-1">
-                  <MapPin size={13} className="text-neutral-400" />
-                  <span>Service Area: Local District</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <Award size={13} className="text-neutral-400" />
-                  <span>Certified Trade Skill</span>
-                </span>
+              <div className="flex items-center gap-3 text-xs text-neutral-600 pt-1 flex-wrap">
+                {profile.serviceAreaSummary && (
+                  <span className="flex items-center gap-1">
+                    <MapPin size={13} className="text-neutral-400" />
+                    <span>{profile.serviceAreaSummary}</span>
+                  </span>
+                )}
+                {profile.languages.length > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Award size={13} className="text-neutral-400" />
+                    <span>Languages: {profile.languages.join(', ')}</span>
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto">
-            <Link to={`/request?providerId=${id || 'target'}`} className="w-full sm:w-auto">
+            <Link to={`/request?providerId=${profile.id}`} className="w-full sm:w-auto">
               <Button variant="primary" size="md" className="w-full sm:w-auto" rightIcon={<ArrowRight size={14} />}>
-                Request This Provider
+                Request Service
               </Button>
             </Link>
             <Button
@@ -151,27 +200,81 @@ export const ProviderProfilePage: React.FC = () => {
           <div className="md:col-span-2 space-y-6">
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
-                Professional Bio &amp; Expertise
+                Professional Bio &amp; Background
               </h3>
-              <p className="text-sm text-neutral-700 leading-relaxed">
-                Qualified service professional with standard trade credentials, technical equipment, and commitment to transparent service delivery. Specializes in rapid fault diagnosis, safe installation, and preventive maintenance.
+              <p className="text-sm text-neutral-700 leading-relaxed whitespace-pre-line">
+                {profile.bio || 'Verified service professional on the SevaSetu platform.'}
               </p>
             </div>
 
+            {/* Skills */}
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
-                Skills &amp; Capabilities
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {['General Diagnostics', 'Installation & Fitting', 'Component Replacement', 'Safety Inspection', 'Emergency Repairs'].map((s) => (
-                  <span key={s} className="px-3 py-1 rounded-md bg-neutral-100 text-neutral-800 text-xs font-medium">
-                    {s}
-                  </span>
-                ))}
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={16} className="text-primary-600" />
+                <h3 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
+                  Verified Skills &amp; Capabilities ({profile.skills.length})
+                </h3>
               </div>
+              {profile.skills.length === 0 ? (
+                <p className="text-xs text-neutral-500">No specific skills listed.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {profile.skills.map((s, idx) => {
+                    const skillName = typeof s === 'string' ? s : s.name;
+                    const skillCategory = typeof s === 'string' ? '' : s.category;
+                    return (
+                      <span
+                        key={typeof s === 'string' ? `${s}-${idx}` : s.id}
+                        className="px-3 py-1 rounded-md bg-neutral-100 text-neutral-800 text-xs font-medium"
+                      >
+                        {skillName} {skillCategory ? `(${skillCategory})` : ''}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Reviews Section Framework */}
+            {/* Offered Services */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-1.5">
+                <Briefcase size={16} className="text-primary-600" />
+                <h3 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
+                  Service Offerings ({profile.services.length})
+                </h3>
+              </div>
+              {profile.services.length === 0 ? (
+                <p className="text-xs text-neutral-500">No service packages currently configured.</p>
+              ) : (
+                <div className="space-y-2">
+                  {profile.services.map((svc) => (
+                    <div
+                      key={svc.id}
+                      className="p-3.5 rounded-lg border border-neutral-200 bg-neutral-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-neutral-900">{svc.title || svc.name || 'Service Offering'}</span>
+                          <Badge variant="info" size="sm" className="text-[10px] uppercase">
+                            {svc.pricingModel.replace('_', ' ')}
+                          </Badge>
+                        </div>
+                        {svc.description && (
+                          <p className="text-xs text-neutral-600">{svc.description}</p>
+                        )}
+                      </div>
+                      <Link to={`/service/${svc.slug || svc.id}`}>
+                        <Button variant="ghost" size="sm" className="text-xs h-7">
+                          Service Details
+                        </Button>
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Honest Reviews Notice (No fake reviews) */}
             <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
@@ -179,63 +282,58 @@ export const ProviderProfilePage: React.FC = () => {
                 </h3>
                 <span className="text-xs text-neutral-600">Verified Marketplace Reviews</span>
               </div>
-              <Card variant="subtle" padding="md" className="text-center py-8">
-                <MessageSquare size={24} className="mx-auto text-neutral-400 mb-2" />
+              <Card variant="subtle" padding="md" className="text-center py-6">
+                <MessageSquare size={22} className="mx-auto text-neutral-400 mb-2" />
                 <p className="text-xs font-semibold text-neutral-900">No public customer reviews yet</p>
                 <p className="text-[11px] text-neutral-600 mt-0.5 max-w-sm mx-auto">
-                  Customer ratings and verified service reviews will be published upon completion of authenticated jobs.
+                  Customer ratings and verified service reviews will be published upon completion of authenticated appointments in Phase 3+.
                 </p>
               </Card>
             </div>
           </div>
 
-          {/* Availability & Service Area Framework */}
+          {/* Right Column: Service Area & Standards */}
           <div className="space-y-4">
             <Card variant="subtle" padding="md" className="space-y-3">
               <h4 className="font-semibold text-xs text-neutral-900 uppercase tracking-wider">
-                Availability Schedule
+                Operating Territory
               </h4>
               <div className="space-y-2 text-xs text-neutral-700">
                 <div className="flex items-center justify-between py-1 border-b border-neutral-200/60">
-                  <span className="flex items-center gap-1.5 text-neutral-600">
-                    <Calendar size={13} />
-                    <span>Working Days</span>
-                  </span>
-                  <span className="font-medium">Monday – Saturday</span>
+                  <span className="text-neutral-600">Service Coverage</span>
+                  <span className="font-medium text-neutral-900">{profile.serviceAreaSummary || 'Local District'}</span>
                 </div>
-                <div className="flex items-center justify-between py-1 border-b border-neutral-200/60">
-                  <span className="flex items-center gap-1.5 text-neutral-600">
-                    <Clock size={13} />
-                    <span>Working Hours</span>
-                  </span>
-                  <span className="font-medium">08:00 AM – 07:00 PM</span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <span className="flex items-center gap-1.5 text-neutral-600">
-                    <CheckCircle2 size={13} className="text-emerald-600" />
-                    <span>Response Time</span>
-                  </span>
-                  <span className="font-medium text-emerald-700">Within 2 Hours</span>
-                </div>
+                {profile.serviceAreas && profile.serviceAreas.length > 0 && (
+                  <div className="py-1">
+                    <span className="text-neutral-500 block mb-1">Serving Municipalities:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {profile.serviceAreas.map((sa: ProviderServiceAreaRecord) => (
+                        <span key={sa.id} className="px-2 py-0.5 rounded bg-white border border-neutral-200 text-[11px]">
+                          {sa.city} ({sa.locality})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
 
             <Card variant="subtle" padding="md" className="space-y-2">
               <h4 className="font-semibold text-xs text-neutral-900 uppercase tracking-wider">
-                Verification Standards
+                Platform Standards
               </h4>
-              <ul className="space-y-1.5 text-xs text-neutral-600">
+              <ul className="space-y-2 text-xs text-neutral-600">
                 <li className="flex items-center gap-1.5">
                   <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                  <span>Government ID check verified</span>
+                  <span>Onboarding profile completed</span>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                  <span>Service skill competency assessed</span>
+                  <span>Trade skills cataloged</span>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                  <span>Platform code of conduct signed</span>
+                  <span>Transparent catalog pricing model</span>
                 </li>
               </ul>
             </Card>

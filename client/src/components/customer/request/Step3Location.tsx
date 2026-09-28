@@ -1,10 +1,12 @@
-import React from 'react';
-import { ArrowLeft, ArrowRight, MapPin, Info, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, ArrowRight, MapPin, Info, CheckCircle2, Loader2, Star } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../ui/Card';
 import { Input } from '../../ui/Input';
 import { Button } from '../../ui/Button';
 import { cn } from '../../../lib/utils';
+import { customerService } from '../../../services/customer.service';
 import type { ServiceAddress, RequestFormErrors } from '../../../types';
+import type { Address } from '@sevasetu/shared';
 
 export interface Step3LocationProps {
   addressMode: 'saved' | 'new';
@@ -29,33 +31,60 @@ export const Step3Location: React.FC<Step3LocationProps> = ({
   onBack,
   onContinue,
 }) => {
-  // Pre-configured structural saved address templates
-  const savedAddresses: { id: string; label: 'Home' | 'Work'; addr: ServiceAddress }[] = [
-    {
-      id: 'addr-home',
-      label: 'Home',
-      addr: {
-        label: 'Home',
-        flatNumber: 'Flat 402, Block B, Green Heights',
-        streetArea: 'Sector 62, Central Enclave',
-        city: 'Noida',
-        pincode: '201301',
-        landmark: 'Near Fortis Hospital',
-      },
-    },
-    {
-      id: 'addr-work',
-      label: 'Work',
-      addr: {
-        label: 'Work',
-        flatNumber: 'Suite 305, Tech Park Tower',
-        streetArea: 'Electronic City, Phase 1',
-        city: 'Bengaluru',
-        pincode: '560100',
-        landmark: 'Opposite Main Metro Station',
-      },
-    },
-  ];
+  const [savedAddresses, setSavedAddresses] = useState<Array<{ id: string; label: string; isDefault: boolean; addr: ServiceAddress }>>([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadAddresses() {
+      setLoadingAddresses(true);
+      try {
+        const addrs = await customerService.getAddresses();
+        if (isMounted) {
+          const mapped = addrs.map((a: Address) => {
+            const labelCapitalized = a.label === 'HOME' ? 'Home' : a.label === 'WORK' ? 'Work' : 'Other';
+            return {
+              id: a.id,
+              label: labelCapitalized,
+              isDefault: a.isDefault,
+              addr: {
+                label: labelCapitalized as 'Home' | 'Work' | 'Other',
+                flatNumber: a.flatNumber,
+                streetArea: a.streetArea,
+                city: a.city,
+                pincode: a.postalCode,
+                landmark: a.landmark || undefined,
+              },
+            };
+          });
+          setSavedAddresses(mapped);
+
+          // If in saved mode and nothing selected, select default address if present
+          if (mapped.length > 0 && !selectedSavedAddressId) {
+            const defaultAddr = mapped.find((m) => m.isDefault) || mapped[0];
+            if (defaultAddr) {
+              onSelectSavedAddress(defaultAddr.id, defaultAddr.addr);
+            }
+          } else if (mapped.length === 0 && addressMode === 'saved') {
+            onChangeAddressMode('new');
+          }
+        }
+      } catch {
+        // If not logged in or addresses unavailable, fallback cleanly to new address mode
+        if (isMounted && addressMode === 'saved') {
+          onChangeAddressMode('new');
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingAddresses(false);
+        }
+      }
+    }
+    loadAddresses();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <Card variant="default" padding="md" className="bg-white space-y-6">
@@ -102,41 +131,77 @@ export const Step3Location: React.FC<Step3LocationProps> = ({
         {/* 1. Saved Addresses Selection View */}
         {addressMode === 'saved' ? (
           <div className="space-y-3">
-            <label className="block text-xs font-semibold text-neutral-800">
-              Select from Saved Addresses
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {savedAddresses.map((sa) => {
-                const isSelected = selectedSavedAddressId === sa.id;
-                return (
-                  <div
-                    key={sa.id}
-                    onClick={() => onSelectSavedAddress(sa.id, sa.addr)}
-                    className={cn(
-                      'p-4 rounded-xl border text-left transition-all cursor-pointer space-y-1.5 relative',
-                      isSelected
-                        ? 'border-primary-500 bg-primary-50/60 ring-1 ring-primary-500 text-neutral-900'
-                        : 'border-neutral-200 bg-white hover:border-neutral-300 text-neutral-700'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-xs uppercase tracking-wider text-primary-700">
-                        {sa.label}
-                      </span>
-                      {isSelected && (
-                        <CheckCircle2 size={16} className="text-primary-600" />
-                      )}
-                    </div>
-                    <p className="text-xs font-medium text-neutral-900 leading-snug">
-                      {sa.addr.flatNumber}, {sa.addr.streetArea}
-                    </p>
-                    <p className="text-[11px] text-neutral-600">
-                      {sa.addr.city} — {sa.addr.pincode}
-                    </p>
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-neutral-800">
+                Select from Saved Addresses ({savedAddresses.length})
+              </label>
+              {loadingAddresses && (
+                <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+                  <Loader2 size={13} className="animate-spin text-primary-600" />
+                  <span>Loading...</span>
+                </div>
+              )}
             </div>
+
+            {loadingAddresses ? (
+              <div className="p-8 text-center border border-neutral-200 rounded-xl bg-neutral-50">
+                <Loader2 size={20} className="animate-spin text-primary-600 mx-auto mb-2" />
+                <p className="text-xs text-neutral-600">Retrieving your saved addresses...</p>
+              </div>
+            ) : savedAddresses.length === 0 ? (
+              <div className="p-6 text-center border border-neutral-200 rounded-xl bg-neutral-50">
+                <p className="text-xs font-medium text-neutral-700 mb-2">No saved service addresses found on your account.</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onChangeAddressMode('new')}
+                >
+                  Enter Address Manually
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {savedAddresses.map((sa) => {
+                  const isSelected = selectedSavedAddressId === sa.id;
+                  return (
+                    <div
+                      key={sa.id}
+                      onClick={() => onSelectSavedAddress(sa.id, sa.addr)}
+                      className={cn(
+                        'p-4 rounded-xl border text-left transition-all cursor-pointer space-y-1.5 relative',
+                        isSelected
+                          ? 'border-primary-500 bg-primary-50/60 ring-1 ring-primary-500 text-neutral-900'
+                          : 'border-neutral-200 bg-white hover:border-neutral-300 text-neutral-700'
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-xs uppercase tracking-wider text-primary-700">
+                            {sa.label}
+                          </span>
+                          {sa.isDefault && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                              <Star size={10} className="fill-amber-500 text-amber-500" />
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        {isSelected && (
+                          <CheckCircle2 size={16} className="text-primary-600" />
+                        )}
+                      </div>
+                      <p className="text-xs font-medium text-neutral-900 leading-snug">
+                        {sa.addr.flatNumber}, {sa.addr.streetArea}
+                      </p>
+                      <p className="text-[11px] text-neutral-600">
+                        {sa.addr.city} — {sa.addr.pincode}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {errors.address && (
               <p className="text-xs text-rose-600 font-medium pt-1">{errors.address}</p>
             )}

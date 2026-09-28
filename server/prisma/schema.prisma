@@ -22,6 +22,26 @@ enum AccountStatus {
   INACTIVE
 }
 
+enum PricingModel {
+  HOURLY
+  FIXED
+  PER_VISIT
+  PER_TASK
+  QUOTE
+}
+
+enum OnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum AddressLabel {
+  HOME
+  WORK
+  OTHER
+}
+
 model User {
   id           String        @id @default(uuid())
   email        String        @unique
@@ -33,7 +53,140 @@ model User {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  addresses       Address[]
+  providerProfile ServiceProviderProfile?
+
   @@index([email])
   @@index([role])
   @@index([status])
+}
+
+model Address {
+  id         String       @id @default(uuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      AddressLabel @default(HOME)
+  flatNumber String
+  streetArea String
+  city       String
+  state      String?      @default("Uttar Pradesh")
+  postalCode String
+  landmark   String?
+  isDefault  Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([userId, isDefault])
+}
+
+model ServiceCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  slug        String    @unique
+  description String
+  iconName    String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  services    Service[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+model Service {
+  id               String       @id @default(uuid())
+  categoryId       String
+  category         ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  title            String
+  slug             String       @unique
+  description      String
+  serviceType      String?      @default("standard")
+  pricingModel     PricingModel @default(FIXED)
+  basePrice        Float?
+  durationMinutes  Int?
+  includedFeatures String[]     @default([])
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  providerServices ProviderService[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([isActive])
+}
+
+model ServiceProviderProfile {
+  id                 String           @id @default(uuid())
+  userId             String           @unique
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName       String?
+  bio                String?
+  experienceYears    Int              @default(0)
+  languages          String[]         @default(["Hindi", "English"])
+  serviceAreaSummary String?
+  avatarUrl          String?
+  isPubliclyListed   Boolean          @default(false)
+  onboardingStatus   OnboardingStatus @default(NOT_STARTED)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  skills             ProviderSkill[]
+  services           ProviderService[]
+  serviceAreas       ProviderServiceArea[]
+
+  @@index([userId])
+  @@index([onboardingStatus])
+  @@index([isPubliclyListed])
+}
+
+model ProviderSkill {
+  id                String                 @id @default(uuid())
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  name              String
+  category          String
+  experienceLevel   String                 @default("intermediate") // beginner | intermediate | expert
+  createdAt         DateTime               @default(now())
+
+  @@index([providerProfileId])
+}
+
+model ProviderService {
+  id                String                 @id @default(uuid())
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  serviceId         String
+  service           Service                @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  customTitle       String?
+  description       String?
+  pricingModel      PricingModel?
+  customPrice       Float?
+  minDuration       String?
+  isActive          Boolean                @default(true)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([providerProfileId, serviceId])
+  @@index([providerProfileId])
+  @@index([serviceId])
+}
+
+model ProviderServiceArea {
+  id                String                 @id @default(uuid())
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  city              String
+  locality          String
+  state             String                 @default("Uttar Pradesh")
+  postalCode        String
+  radiusKm          Float                  @default(10.0)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([providerProfileId])
+  @@index([city, postalCode])
 }

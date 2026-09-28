@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -7,6 +7,8 @@ import {
   MapPin,
   Calendar,
   ArrowRight,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
@@ -14,20 +16,72 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Alert } from '../../components/ui/Alert';
-import { CORE_SERVICE_CATEGORIES } from '../../constants/categories';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { catalogService } from '../../services/catalog.service';
+import type { Service as CatalogService } from '@sevasetu/shared';
 
 export const ServiceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const [service, setService] = useState<CatalogService | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [bookingNotice, setBookingNotice] = useState(false);
 
-  // Match against core category if id matches a known slug
-  const matchedCategory = CORE_SERVICE_CATEGORIES.find(
-    (c) => c.slug === id || c.id === id
-  );
+  useEffect(() => {
+    let isMounted = true;
+    async function loadService() {
+      if (!id) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await catalogService.getService(id);
+        if (isMounted) setService(data);
+      } catch (err: unknown) {
+        if (isMounted) {
+          const message = err instanceof Error ? err.message : 'Service not found in catalog';
+          setError(message);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    loadService();
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
 
-  // If no matching category or generic ID
-  const serviceTitle = matchedCategory ? `${matchedCategory.name} Service Package` : `Service Specification (${id})`;
-  const categoryName = matchedCategory ? matchedCategory.name : 'Home & Local Services';
+  if (loading) {
+    return (
+      <PageContainer maxWidth="lg" className="py-16 text-center space-y-4">
+        <Loader2 size={32} className="animate-spin text-primary-600 mx-auto" />
+        <p className="text-sm text-neutral-600">Loading service details from platform catalog...</p>
+      </PageContainer>
+    );
+  }
+
+  if (error || !service) {
+    return (
+      <PageContainer maxWidth="md" className="py-12">
+        <EmptyState
+          icon={<AlertCircle size={28} className="text-rose-500" />}
+          title="Catalog Service Not Found"
+          description={error || `The service "${id}" is either inactive or does not exist in the database.`}
+          action={
+            <Link to="/services">
+              <Button size="sm" variant="primary">
+                Return to Service Catalog
+              </Button>
+            </Link>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
+  const categoryName = service.category?.name || service.categoryName || 'Home & Local Services';
+  const categorySlug = service.category?.slug || '';
+  const serviceName = service.name || service.title || 'Service Detail';
 
   const includedItems = [
     'Initial diagnostic and requirement assessment on arrival',
@@ -40,12 +94,12 @@ export const ServiceDetailPage: React.FC = () => {
     <PageContainer maxWidth="lg" className="space-y-8">
       {/* Page Header */}
       <PageHeader
-        title={serviceTitle}
-        description={`Comprehensive ${categoryName.toLowerCase()} performed by certified and background-verified local specialists.`}
+        title={serviceName}
+        description={service.description}
         breadcrumbs={[
           { label: 'Services', href: '/services' },
-          { label: categoryName, href: `/services/${matchedCategory?.slug || ''}` },
-          { label: 'Service Detail' },
+          { label: categoryName, href: `/services?category=${categorySlug}` },
+          { label: serviceName },
         ]}
       />
 
@@ -63,7 +117,7 @@ export const ServiceDetailPage: React.FC = () => {
               You can submit your service requirements right now via the structured service request form.
             </p>
             <div className="pt-2">
-              <Link to={`/request?category=${matchedCategory?.slug || ''}`}>
+              <Link to={`/request?category=${categorySlug}&service=${service.slug}`}>
                 <Button size="sm" variant="primary">
                   Go to Request Form
                 </Button>
@@ -82,15 +136,14 @@ export const ServiceDetailPage: React.FC = () => {
             <CardHeader className="pb-3 border-b border-neutral-100">
               <div className="flex items-center gap-2">
                 <Badge variant="info" size="sm">{categoryName}</Badge>
-                <Badge variant="neutral" size="sm">Standard Tier</Badge>
+                <Badge variant="neutral" size="sm" className="uppercase font-mono text-[10px]">
+                  {service.pricingModel.replace('_', ' ')}
+                </Badge>
               </div>
-              <CardTitle className="pt-2">Service Overview</CardTitle>
+              <CardTitle className="pt-2">{serviceName}</CardTitle>
             </CardHeader>
             <CardContent className="pt-4 space-y-4 text-sm text-neutral-700 leading-relaxed">
-              <p>
-                {matchedCategory?.description ||
-                  'Professional local service execution adhering to SevaSetu verified safety and quality standards.'}
-              </p>
+              <p>{service.description}</p>
               <p>
                 Our verified service partners are equipped with standard tools, safety gear, and background checks to guarantee a seamless home service experience.
               </p>
@@ -135,8 +188,10 @@ export const ServiceDetailPage: React.FC = () => {
                 Pricing Structure
               </div>
               <div className="flex items-baseline gap-2 pt-1">
-                <span className="text-2xl font-bold text-neutral-900 font-mono">Transparent</span>
-                <span className="text-xs text-neutral-600">Estimate provided upfront</span>
+                <span className="text-2xl font-bold text-neutral-900 font-mono">
+                  {service.pricingModel.replace('_', ' ')}
+                </span>
+                <span className="text-xs text-neutral-600">Standard rate model</span>
               </div>
             </CardHeader>
 
@@ -167,7 +222,7 @@ export const ServiceDetailPage: React.FC = () => {
             </CardContent>
 
             <CardFooter className="flex flex-col gap-2.5 pt-4">
-              <Link to={`/request?category=${matchedCategory?.slug || ''}`} className="w-full">
+              <Link to={`/request?category=${categorySlug}&service=${service.slug}`} className="w-full">
                 <Button variant="primary" size="md" className="w-full" rightIcon={<ArrowRight size={16} />}>
                   Request This Service
                 </Button>

@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Inbox,
   Briefcase,
-  Calendar,
   Wallet,
   Star,
   Clock,
@@ -21,8 +20,59 @@ import {
   NoEarningsState,
   NoReviewsState,
 } from '../../components/provider/ProviderEmptyStates';
+import { providerService } from '../../services/provider.service';
+import type { ProviderProfileData as UIProviderProfileData } from '../../types';
+import type { ProviderOnboardingState } from '@sevasetu/shared';
 
 export const ProviderOverviewPage: React.FC = () => {
+  const [profile, setProfile] = useState<UIProviderProfileData | null>(null);
+  const [hasSkills, setHasSkills] = useState(false);
+  const [hasServices, setHasServices] = useState(false);
+  const [onboarding, setOnboarding] = useState<ProviderOnboardingState | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [profData, skillsData, servicesData, onboardingData] = await Promise.all([
+          providerService.getProfile(),
+          providerService.getSkills(),
+          providerService.getServices(),
+          providerService.getOnboardingState(),
+        ]);
+        if (isMounted) {
+          const name = profData.displayName || profData.businessName || 'Service Provider';
+          setProfile({
+            fullName: name,
+            bio: profData.bio || '',
+            experienceYears: profData.experienceYears || 1,
+            serviceArea: profData.serviceAreaSummary || '',
+            languages: profData.languages,
+            profileStatus: profData.onboardingStatus === 'COMPLETED' ? 'active' : 'incomplete',
+            visibility: profData.isPubliclyListed ? 'public' : 'unlisted',
+            verificationStatus: 'unverified',
+          });
+          setHasSkills(skillsData.length > 0);
+          setHasServices(servicesData.length > 0);
+          setOnboarding(onboardingData);
+        }
+      } catch (_err) {
+        // Handled silently for dashboard
+      }
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const isOnboardingComplete =
+    onboarding?.status === 'COMPLETED' || onboarding?.onboardingStatus === 'COMPLETED';
+  const progressPercentage =
+    onboarding?.completionPercentage ?? onboarding?.progressPercentage ?? 0;
+  const currentStatus =
+    onboarding?.status || onboarding?.onboardingStatus || 'NOT_STARTED';
+
   return (
     <PageContainer maxWidth="xl" className="space-y-6 pb-12">
       {/* Provider Page Header */}
@@ -56,38 +106,52 @@ export const ProviderOverviewPage: React.FC = () => {
             <CardHeader className="pb-3 border-b border-neutral-100">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                  Live Dispatch Status
+                  Onboarding &amp; Status
                 </span>
-                <Badge variant="success" size="sm" withDot>
-                  Active &amp; Ready
+                <Badge variant={isOnboardingComplete ? 'success' : 'warning'} size="sm" withDot>
+                  {isOnboardingComplete ? 'Active & Ready' : 'Onboarding Pending'}
                 </Badge>
               </div>
-              <CardTitle className="text-base pt-1">On-Duty Availability</CardTitle>
+              <CardTitle className="text-base pt-1">
+                {isOnboardingComplete ? 'Ready for Customer Discovery' : 'Setup In Progress'}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-xs text-neutral-700">
               <p className="leading-relaxed">
-                Your profile is active and receiving customer matches in your assigned service sectors.
+                {isOnboardingComplete
+                  ? 'Your profile setup is complete. You are ready to accept appointments in your selected service territory.'
+                  : 'Please complete your bio, skills, service offerings, and service area to become publicly discoverable.'}
               </p>
               <div className="p-3 rounded-lg bg-neutral-50 border border-neutral-200/80 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">Today's Schedule:</span>
-                  <span className="font-semibold text-neutral-900 font-mono">09:00 AM – 06:00 PM</span>
+                  <span className="text-neutral-500">Onboarding State:</span>
+                  <span className="font-semibold text-neutral-900 font-mono">
+                    {currentStatus}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">Dispatch Window:</span>
-                  <span className="font-semibold text-neutral-900">Standard (+/- 2 hrs)</span>
+                  <span className="text-neutral-500">Progress:</span>
+                  <span className="font-semibold text-neutral-900 font-mono">
+                    {progressPercentage}%
+                  </span>
                 </div>
               </div>
-              <Link to="/provider/availability" className="block pt-1">
-                <Button variant="outline" size="sm" className="w-full text-xs" leftIcon={<Calendar size={13} />}>
-                  Adjust Working Hours
+              <Link to="/provider/profile" className="block pt-1">
+                <Button variant="outline" size="sm" className="w-full text-xs" rightIcon={<ArrowRight size={13} />}>
+                  {isOnboardingComplete ? 'Manage Profile & Skills' : 'Continue Onboarding'}
                 </Button>
               </Link>
             </CardContent>
           </Card>
 
           {/* Honest Profile Completion Checklist */}
-          <ProviderProfileCompletion compact />
+          <ProviderProfileCompletion
+            compact
+            profile={profile}
+            hasSkills={hasSkills}
+            hasServices={hasServices}
+            hasAvailability={true}
+          />
         </div>
 
         {/* Main Operational Feed: Requests & Jobs */}

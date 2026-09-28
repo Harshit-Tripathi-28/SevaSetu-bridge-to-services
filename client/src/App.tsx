@@ -37,6 +37,7 @@ import {
   ProviderProfilePage as CustomerProviderProfilePage,
   RequestServicePage,
   CustomerActivityPage,
+  CustomerProfilePage,
 } from './pages/customer';
 import {
   ProviderOverviewPage,
@@ -94,6 +95,7 @@ const CustomerLayout: React.FC = () => {
     { label: 'Find Services', href: '/services', icon: <Search size={15} /> },
     { label: 'Request Service', href: '/request', icon: <Sparkles size={15} /> },
     { label: 'Activity', href: '/activity', icon: <CalendarClock size={15} /> },
+    ...(isAuthenticated ? [{ label: 'Profile', href: '/profile', icon: <User size={15} /> }] : []),
     { label: 'Messages', href: '/messages', icon: <MessageSquare size={15} /> },
     { label: 'Alerts', href: '/notifications', icon: <Bell size={15} /> },
     { label: 'Partner Portal', href: '/provider', icon: <Briefcase size={15} /> },
@@ -107,6 +109,7 @@ const CustomerLayout: React.FC = () => {
     { label: 'Browse Services', href: '/services', icon: <Search size={15} /> },
     { label: 'Request Service', href: '/request', icon: <Sparkles size={15} /> },
     { label: 'My Activity', href: '/activity', icon: <CalendarClock size={15} /> },
+    ...(isAuthenticated ? [{ label: 'My Profile & Addresses', href: '/profile', icon: <User size={15} /> }] : []),
     { label: 'Messages', href: '/messages', icon: <MessageSquare size={15} /> },
     { label: 'Notifications', href: '/notifications', icon: <Bell size={15} /> },
     { label: 'Partner Portal', href: '/provider', icon: <Briefcase size={15} /> },
@@ -175,13 +178,22 @@ const CustomerLayout: React.FC = () => {
           {/* Authentication State Section */}
           {isAuthenticated && user ? (
             <div className="flex items-center gap-2 pl-1 border-l border-neutral-200">
-              <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 bg-neutral-100 rounded-md text-xs font-medium text-neutral-700">
+              <Link
+                to="/profile"
+                className="hidden xl:flex items-center gap-1.5 px-2 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-md text-xs font-medium text-neutral-700 transition-colors"
+                title="View My Profile & Saved Addresses"
+              >
                 <User size={12} className="text-neutral-500" />
                 <span className="max-w-[110px] truncate" title={user.email}>{user.email}</span>
                 <Badge variant={user.role === 'ADMIN' ? 'neutral' : user.role === 'PROVIDER' ? 'info' : 'success'} size="sm" className="text-[9px] py-0 px-1 font-bold">
                   {user.role}
                 </Badge>
-              </div>
+              </Link>
+              <Link to="/profile" className="xl:hidden">
+                <Button variant="ghost" size="sm" leftIcon={<User size={13} />} className="text-xs h-8">
+                  Profile
+                </Button>
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"
@@ -319,6 +331,14 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute allowedRoles={['CUSTOMER', 'ADMIN']}>
                   <CustomerActivityPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute allowedRoles={['CUSTOMER', 'PROVIDER', 'ADMIN']}>
+                  <CustomerProfilePage />
                 </ProtectedRoute>
               }
             />

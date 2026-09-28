@@ -78,27 +78,252 @@ export interface AuthState {
  * Ready for future backend service endpoints.
  */
 
+export type AddressLabel = 'HOME' | 'WORK' | 'OTHER';
+
+export interface Address {
+  id: string;
+  userId: string;
+  label: AddressLabel;
+  flatNumber: string;
+  streetArea: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  landmark?: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAddressRequest {
+  label: AddressLabel;
+  flatNumber: string;
+  streetArea: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  landmark?: string;
+  isDefault?: boolean;
+}
+
+export interface UpdateAddressRequest {
+  label?: AddressLabel;
+  flatNumber?: string;
+  streetArea?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  landmark?: string;
+  isDefault?: boolean;
+}
+
+export interface CustomerProfile {
+  id: string;
+  email: string;
+  fullName: string | null;
+  phone: string | null;
+  role: UserRole;
+  status: AccountStatus;
+  createdAt: string;
+  updatedAt: string;
+  addressesCount?: number;
+  defaultAddress?: Address | null;
+}
+
+export interface UpdateCustomerProfileRequest {
+  fullName?: string;
+  phone?: string;
+}
+
+export type CatalogPricingModel = 'HOURLY' | 'FIXED' | 'PER_VISIT' | 'PER_TASK' | 'QUOTE';
+
+export type OnboardingStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+
+export interface ProviderProfileData {
+  id: string;
+  userId: string;
+  businessName: string | null;
+  displayName?: string;
+  fullName?: string;
+  bio: string | null;
+  experienceYears: number;
+  languages: string[];
+  serviceAreaSummary: string | null;
+  avatarUrl: string | null;
+  isPubliclyListed: boolean;
+  onboardingStatus: OnboardingStatus;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    email: string;
+    phone: string | null;
+    role: UserRole;
+    status: AccountStatus;
+  };
+}
+
+export interface UpdateProviderProfileRequest {
+  businessName?: string;
+  displayName?: string;
+  bio?: string;
+  experienceYears?: number;
+  languages?: string[];
+  serviceAreaSummary?: string;
+  avatarUrl?: string;
+  isPubliclyListed?: boolean;
+}
+
+export interface ProviderSkillItem {
+  id: string;
+  providerProfileId: string;
+  name: string;
+  category: string;
+  experienceLevel?: 'beginner' | 'intermediate' | 'expert' | string;
+  createdAt: string;
+}
+
+export interface CreateProviderSkillRequest {
+  name: string;
+  category: string;
+  experienceLevel?: 'beginner' | 'intermediate' | 'expert' | string;
+}
+
+export interface ProviderServiceRecord {
+  id: string;
+  providerProfileId: string;
+  serviceId: string;
+  service?: Service;
+  customTitle: string | null;
+  description: string | null;
+  customDescription?: string | null;
+  pricingModel: CatalogPricingModel | null;
+  customPrice: number | null;
+  basePrice?: number | null;
+  minDuration: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProviderServiceRequest {
+  serviceId: string;
+  customTitle?: string;
+  description?: string;
+  customDescription?: string;
+  pricingModel?: CatalogPricingModel;
+  customPrice?: number;
+  basePrice?: number;
+  minDuration?: string;
+  isActive?: boolean;
+}
+
+export interface UpdateProviderServiceRequest {
+  customTitle?: string;
+  description?: string;
+  customDescription?: string;
+  pricingModel?: CatalogPricingModel;
+  customPrice?: number;
+  basePrice?: number;
+  minDuration?: string;
+  isActive?: boolean;
+}
+
+export interface ProviderServiceAreaRecord {
+  id: string;
+  providerProfileId: string;
+  city: string;
+  locality: string;
+  state: string;
+  postalCode: string;
+  radiusKm: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SetProviderServiceAreaRequest {
+  city: string;
+  locality: string;
+  state?: string;
+  postalCode?: string;
+  postalCodes?: string[];
+  radiusKm?: number;
+}
+
+export interface OnboardingSectionStatus {
+  id: 'profile' | 'skills' | 'services' | 'area' | string;
+  title: string;
+  isComplete: boolean;
+  required: boolean;
+  details?: string;
+}
+
+export interface ProviderOnboardingState {
+  status: OnboardingStatus;
+  isComplete: boolean;
+  completionPercentage: number;
+  sections: OnboardingSectionStatus[];
+  profile: ProviderProfileData | null;
+  onboardingStatus?: OnboardingStatus;
+  progressPercentage?: number;
+  completedSections?: string[];
+  remainingSections?: string[];
+}
+
+export interface PublicProviderProfile {
+  id: string;
+  displayName: string;
+  bio: string;
+  experienceYears: number;
+  languages: string[];
+  avatarUrl: string | null;
+  serviceAreaSummary: string | null;
+  skills: (string | ProviderSkillItem)[];
+  services: {
+    id: string;
+    title: string;
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    categoryName: string;
+    pricingModel: string;
+    basePrice?: number | null;
+  }[];
+  isPubliclyListed: boolean;
+  createdAt: string;
+  serviceAreas?: ProviderServiceAreaRecord[];
+}
+
+/**
+ * Customer Experience & Service Domain Interfaces
+ * Ready for future backend service endpoints.
+ */
+
 export interface ServiceCategory {
   id: string;
   name: string;
   slug: string;
   description: string;
-  iconName?: string;
+  iconName?: string | null;
   isActive: boolean;
   serviceCount?: number;
 }
 
-export type PricingModel = 'fixed' | 'hourly' | 'quote' | 'tiered';
+export type PricingModel = 'fixed' | 'hourly' | 'quote' | 'tiered' | 'HOURLY' | 'FIXED' | 'PER_VISIT' | 'PER_TASK' | 'QUOTE';
 
 export interface Service {
   id: string;
   categoryId: string;
-  title: string;
+  category?: ServiceCategory;
+  categoryName?: string;
+  name?: string;
+  title?: string;
+  slug?: string;
   description: string;
+  serviceType?: string | null;
   pricingModel: PricingModel;
-  basePrice?: number;
+  basePrice?: number | null;
   currency?: string;
-  durationMinutes?: number;
+  durationMinutes?: number | null;
   includedFeatures?: string[];
   isActive: boolean;
 }
