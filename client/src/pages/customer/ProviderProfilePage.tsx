@@ -21,7 +21,7 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Alert } from '../../components/ui/Alert';
 import { providerService } from '../../services/provider.service';
-import type { PublicProviderProfile, ProviderServiceAreaRecord } from '@sevasetu/shared';
+import type { PublicProviderProfile, ProviderServiceAreaRecord, AvailabilityCheckResponse } from '@sevasetu/shared';
 
 export const ProviderProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -29,6 +29,29 @@ export const ProviderProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requestNotice, setRequestNotice] = useState(false);
+
+  // Real Availability Check State
+  const [checkDate, setCheckDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [checkingAvail, setCheckingAvail] = useState(false);
+  const [availResult, setAvailResult] = useState<AvailabilityCheckResponse | null>(null);
+
+  const handleCheckAvailability = async () => {
+    if (!id || !checkDate) return;
+    setCheckingAvail(true);
+    try {
+      const res = await providerService.checkAvailability(id, { date: checkDate });
+      setAvailResult(res);
+    } catch (err: unknown) {
+      setAvailResult({
+        providerId: id,
+        date: checkDate,
+        isAvailable: false,
+        reason: err instanceof Error ? err.message : 'Availability inquiry failed',
+      });
+    } finally {
+      setCheckingAvail(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -292,8 +315,9 @@ export const ProviderProfilePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Service Area & Standards */}
+          {/* Right Column: Service Area, Availability & Standards */}
           <div className="space-y-4">
+            {/* Service Area */}
             <Card variant="subtle" padding="md" className="space-y-3">
               <h4 className="font-semibold text-xs text-neutral-900 uppercase tracking-wider">
                 Operating Territory
@@ -313,6 +337,66 @@ export const ProviderProfilePage: React.FC = () => {
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Real Operating Availability Check */}
+            <Card variant="subtle" padding="md" className="space-y-3">
+              <h4 className="font-semibold text-xs text-neutral-900 uppercase tracking-wider">
+                Operating Schedule
+              </h4>
+              <p className="text-xs text-neutral-600">
+                Check this provider's verified availability for an intended appointment date.
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={checkDate}
+                    onChange={(e) => setCheckDate(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900 w-full"
+                    aria-label="Check Date"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCheckAvailability}
+                    disabled={checkingAvail || !checkDate}
+                    className="text-xs shrink-0"
+                  >
+                    {checkingAvail ? <Loader2 size={12} className="animate-spin" /> : 'Check'}
+                  </Button>
+                </div>
+
+                {availResult && (
+                  <div className={`p-2.5 rounded-lg text-xs border ${
+                    availResult.isAvailable
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                  }`}>
+                    <div className="flex items-center gap-1.5 font-semibold">
+                      {availResult.isAvailable ? (
+                        <>
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                          <span>Available on {checkDate}</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={14} className="text-rose-600" />
+                          <span>Not Available on {checkDate}</span>
+                        </>
+                      )}
+                    </div>
+                    {availResult.workingHours && (
+                      <p className="text-[11px] mt-1 text-neutral-700">
+                        Operating Hours: <span className="font-mono">{availResult.workingHours.startTime} - {availResult.workingHours.endTime}</span>
+                      </p>
+                    )}
+                    {availResult.reason && (
+                      <p className="text-[11px] mt-0.5 opacity-80">{availResult.reason}</p>
+                    )}
                   </div>
                 )}
               </div>

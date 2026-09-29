@@ -16,6 +16,8 @@ export interface ServiceSearchFiltersProps {
   onLocationChange: (value: string) => void;
   preferredDate?: string;
   onDateChange?: (value: string) => void;
+  preferredTime?: string;
+  onTimeChange?: (value: string) => void;
   sortBy: string;
   onSortChange: (value: string) => void;
   onReset?: () => void;
@@ -32,6 +34,8 @@ export const ServiceSearchFilters: React.FC<ServiceSearchFiltersProps> = ({
   onLocationChange,
   preferredDate = '',
   onDateChange,
+  preferredTime = '',
+  onTimeChange,
   sortBy,
   onSortChange,
   onReset,
@@ -44,9 +48,7 @@ export const ServiceSearchFilters: React.FC<ServiceSearchFiltersProps> = ({
   ];
 
   const sortOptions = [
-    { value: 'recommended', label: 'Recommended' },
-    { value: 'rating', label: 'Highest Rated' },
-    { value: 'distance', label: 'Closest Distance' },
+    { value: 'recommended', label: 'Best Match (Recommended)' },
     { value: 'experience', label: 'Most Experienced' },
   ];
 
@@ -79,11 +81,11 @@ export const ServiceSearchFilters: React.FC<ServiceSearchFiltersProps> = ({
           />
         </div>
 
-        {/* Secondary Parameters Bar (Date & Sort) */}
+        {/* Secondary Parameters Bar (Date, Time & Sort) */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-neutral-100 text-xs">
           <div className="flex flex-wrap items-center gap-3">
             {onDateChange && (
-              <div className="w-full sm:w-48">
+              <div className="w-full sm:w-44">
                 <Input
                   type="date"
                   value={preferredDate}
@@ -95,10 +97,22 @@ export const ServiceSearchFilters: React.FC<ServiceSearchFiltersProps> = ({
               </div>
             )}
 
+            {onTimeChange && preferredDate && (
+              <div className="w-full sm:w-36">
+                <Input
+                  type="time"
+                  value={preferredTime}
+                  onChange={(e) => onTimeChange(e.target.value)}
+                  aria-label="Preferred Time"
+                  className="py-1.5 text-xs"
+                />
+              </div>
+            )}
+
             <div className="flex items-center gap-1.5 text-neutral-600">
               <SlidersHorizontal size={14} className="text-neutral-500" />
               <span className="font-medium">Sort by:</span>
-              <div className="w-40">
+              <div className="w-48">
                 <Select
                   value={sortBy}
                   onChange={(e) => onSortChange(e.target.value)}

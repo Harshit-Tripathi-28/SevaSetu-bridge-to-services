@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Calendar,
   Clock,
@@ -7,58 +7,134 @@ import {
   Plus,
   Trash2,
   Coffee,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
 import { Alert } from '../ui/Alert';
 import { Input } from '../ui/Input';
+import { providerService } from '../../services/provider.service';
 import type {
-  ProviderAvailabilityData,
-  DaySchedule,
   DayOfWeek,
-  AvailabilityOverride,
-} from '../../types';
+  SetDayScheduleInput,
+  AvailabilityOverrideItem,
+  ProviderAvailabilitySchedule,
+  ProviderAvailabilityItem,
+} from '@sevasetu/shared';
 
 export interface AvailabilityEditorProps {
-  initialAvailability?: ProviderAvailabilityData;
-  onSave?: (availability: ProviderAvailabilityData) => void;
   className?: string;
+  onSaved?: (data: ProviderAvailabilitySchedule) => void;
 }
 
-const DEFAULT_WEEKLY: DaySchedule[] = [
-  { day: 'monday', dayLabel: 'Monday', isAvailable: true, startTime: '09:00', endTime: '18:00', breakStart: '13:00', breakEnd: '14:00' },
-  { day: 'tuesday', dayLabel: 'Tuesday', isAvailable: true, startTime: '09:00', endTime: '18:00', breakStart: '13:00', breakEnd: '14:00' },
-  { day: 'wednesday', dayLabel: 'Wednesday', isAvailable: true, startTime: '09:00', endTime: '18:00', breakStart: '13:00', breakEnd: '14:00' },
-  { day: 'thursday', dayLabel: 'Thursday', isAvailable: true, startTime: '09:00', endTime: '18:00', breakStart: '13:00', breakEnd: '14:00' },
-  { day: 'friday', dayLabel: 'Friday', isAvailable: true, startTime: '09:00', endTime: '18:00', breakStart: '13:00', breakEnd: '14:00' },
-  { day: 'saturday', dayLabel: 'Saturday', isAvailable: true, startTime: '10:00', endTime: '16:00' },
-  { day: 'sunday', dayLabel: 'Sunday', isAvailable: false, startTime: '10:00', endTime: '14:00' },
+interface LocalDaySchedule {
+  dayOfWeek: DayOfWeek;
+  dayLabel: string;
+  isAvailable: boolean;
+  startTime: string;
+  endTime: string;
+  breakStart?: string;
+  breakEnd?: string;
+}
+
+const ORDERED_DAYS: { day: DayOfWeek; label: string; defaultStart: string; defaultEnd: string; defaultAvailable: boolean }[] = [
+  { day: 'MONDAY', label: 'Monday', defaultStart: '09:00', defaultEnd: '18:00', defaultAvailable: true },
+  { day: 'TUESDAY', label: 'Tuesday', defaultStart: '09:00', defaultEnd: '18:00', defaultAvailable: true },
+  { day: 'WEDNESDAY', label: 'Wednesday', defaultStart: '09:00', defaultEnd: '18:00', defaultAvailable: true },
+  { day: 'THURSDAY', label: 'Thursday', defaultStart: '09:00', defaultEnd: '18:00', defaultAvailable: true },
+  { day: 'FRIDAY', label: 'Friday', defaultStart: '09:00', defaultEnd: '18:00', defaultAvailable: true },
+  { day: 'SATURDAY', label: 'Saturday', defaultStart: '10:00', defaultEnd: '16:00', defaultAvailable: true },
+  { day: 'SUNDAY', label: 'Sunday', defaultStart: '10:00', defaultEnd: '14:00', defaultAvailable: false },
 ];
 
 export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
-  initialAvailability,
-  onSave,
   className,
+  onSaved,
 }) => {
-  const [schedule, setSchedule] = useState<DaySchedule[]>(
-    initialAvailability?.weeklySchedule || DEFAULT_WEEKLY
+  const [schedule, setSchedule] = useState<LocalDaySchedule[]>(() =>
+    ORDERED_DAYS.map((d) => ({
+      dayOfWeek: d.day,
+      dayLabel: d.label,
+      isAvailable: d.defaultAvailable,
+      startTime: d.defaultStart,
+      endTime: d.defaultEnd,
+      breakStart: '13:00',
+      breakEnd: '14:00',
+    }))
   );
-  const [vacationMode, setVacationMode] = useState<boolean>(
-    initialAvailability?.vacationMode || false
-  );
-  const [overrides, setOverrides] = useState<AvailabilityOverride[]>(
-    initialAvailability?.overrides || []
-  );
+  const [vacationMode, setVacationMode] = useState<boolean>(false);
+  const [overrides, setOverrides] = useState<AvailabilityOverrideItem[]>([]);
 
+  // State indicators
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // New Override State
   const [newOverrideDate, setNewOverrideDate] = useState('');
   const [newOverrideAvailable, setNewOverrideAvailable] = useState(false);
-  const [newOverrideNote, setNewOverrideNote] = useState('');
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [newOverrideReason, setNewOverrideReason] = useState('');
+  const [isAddingOverride, setIsAddingOverride] = useState(false);
+
+  // Fetch Real Availability from PostgreSQL
+  useEffect(() => {
+    let isMounted = true;
+    async function loadAvailability() {
+      setIsLoading(true);
+      setErrorMessage(null);
+      try {
+        const data = await providerService.getAvailability();
+        if (!isMounted) return;
+
+        setVacationMode(data.vacationMode || false);
+        setOverrides(data.overrides || []);
+
+        // Map weeklySchedule from backend onto the 7 ordered days
+        if (data.weeklySchedule && data.weeklySchedule.length > 0) {
+          const mapped = ORDERED_DAYS.map((def) => {
+            const existing = data.weeklySchedule.find((w: ProviderAvailabilityItem) => w.dayOfWeek === def.day);
+            if (existing) {
+              return {
+                dayOfWeek: def.day,
+                dayLabel: def.label,
+                isAvailable: existing.isAvailable,
+                startTime: existing.startTime || def.defaultStart,
+                endTime: existing.endTime || def.defaultEnd,
+                breakStart: existing.breakStart || undefined,
+                breakEnd: existing.breakEnd || undefined,
+              };
+            }
+            return {
+              dayOfWeek: def.day,
+              dayLabel: def.label,
+              isAvailable: def.defaultAvailable,
+              startTime: def.defaultStart,
+              endTime: def.defaultEnd,
+              breakStart: '13:00',
+              breakEnd: '14:00',
+            };
+          });
+          setSchedule(mapped);
+        }
+      } catch (err: unknown) {
+        if (!isMounted) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load availability schedule';
+        setErrorMessage(msg);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadAvailability();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleToggleDay = (day: DayOfWeek) => {
     setSchedule((prev) =>
-      prev.map((s) => (s.day === day ? { ...s, isAvailable: !s.isAvailable } : s))
+      prev.map((s) => (s.dayOfWeek === day ? { ...s, isAvailable: !s.isAvailable } : s))
     );
   };
 
@@ -68,41 +144,118 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
     val: string
   ) => {
     setSchedule((prev) =>
-      prev.map((s) => (s.day === day ? { ...s, [field]: val } : s))
+      prev.map((s) => (s.dayOfWeek === day ? { ...s, [field]: val } : s))
     );
   };
 
-  const handleAddOverride = (e: React.FormEvent) => {
+  // Add Date-Specific Override
+  const handleAddOverride = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOverrideDate) return;
-    setOverrides((prev) => [
-      ...prev,
-      {
+
+    setIsAddingOverride(true);
+    setErrorMessage(null);
+    try {
+      const updated = await providerService.createOverride({
         date: newOverrideDate,
         isAvailable: newOverrideAvailable,
-        note: newOverrideNote.trim() || undefined,
-      },
-    ]);
-    setNewOverrideDate('');
-    setNewOverrideNote('');
+        reason: newOverrideReason.trim() || undefined,
+      });
+
+      setOverrides(updated.overrides || []);
+      setNewOverrideDate('');
+      setNewOverrideReason('');
+      setNewOverrideAvailable(false);
+      setSuccessMessage(`Date override for ${newOverrideDate} saved.`);
+      setTimeout(() => setSuccessMessage(null), 3500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save date override';
+      setErrorMessage(msg);
+    } finally {
+      setIsAddingOverride(false);
+    }
   };
 
-  const handleRemoveOverride = (idx: number) => {
-    setOverrides((prev) => prev.filter((_, i) => i !== idx));
+  // Remove Date Override
+  const handleRemoveOverride = async (id: string, dateStr: string) => {
+    setErrorMessage(null);
+    try {
+      await providerService.deleteOverride(id);
+      setOverrides((prev) => prev.filter((o) => o.id !== id));
+      setSuccessMessage(`Override for ${dateStr} removed.`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete date override';
+      setErrorMessage(msg);
+    }
   };
 
-  const handleSave = () => {
-    const payload: ProviderAvailabilityData = {
-      weeklySchedule: schedule,
-      vacationMode,
-      overrides,
-    };
-    if (onSave) onSave(payload);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 4000);
+  // Validate and Save Weekly Working Hours
+  const handleSave = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    // Client-side validation: ensure startTime < endTime for available days
+    for (const item of schedule) {
+      if (item.isAvailable) {
+        if (!item.startTime || !item.endTime) {
+          setErrorMessage(`Please provide valid start and end times for ${item.dayLabel}.`);
+          return;
+        }
+        if (item.startTime >= item.endTime) {
+          setErrorMessage(`${item.dayLabel} operating hours are invalid: Start time must precede end time.`);
+          return;
+        }
+        if (item.breakStart && item.breakEnd) {
+          if (item.breakStart >= item.breakEnd) {
+            setErrorMessage(`${item.dayLabel} break times are invalid: Break start must precede break end.`);
+            return;
+          }
+          if (item.breakStart < item.startTime || item.breakEnd > item.endTime) {
+            setErrorMessage(`${item.dayLabel} break must fall within the working shift (${item.startTime} - ${item.endTime}).`);
+            return;
+          }
+        }
+      }
+    }
+
+    setIsSaving(true);
+    try {
+      const payloadSchedule: SetDayScheduleInput[] = schedule.map((s) => ({
+        dayOfWeek: s.dayOfWeek,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        isAvailable: s.isAvailable,
+        breakStart: s.breakStart || null,
+        breakEnd: s.breakEnd || null,
+      }));
+
+      const res = await providerService.setAvailability({
+        vacationMode,
+        weeklySchedule: payloadSchedule,
+      });
+
+      setSuccessMessage('Weekly operating schedule successfully saved.');
+      if (onSaved) onSaved(res);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save weekly schedule';
+      setErrorMessage(msg);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const activeDaysCount = schedule.filter((s) => s.isAvailable).length;
+
+  if (isLoading) {
+    return (
+      <Card variant="default" padding="lg" className="bg-white text-center py-12">
+        <Loader2 size={28} className="animate-spin text-primary-600 mx-auto mb-3" />
+        <p className="text-xs text-neutral-600 font-medium">Loading your availability schedule...</p>
+      </Card>
+    );
+  }
 
   return (
     <div className={`space-y-6 ${className || ''}`}>
@@ -129,9 +282,15 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {saveSuccess && (
-            <Alert variant="success" title="Schedule Preferences Saved">
-              Your weekly operating hours and holiday overrides have been recorded.
+          {errorMessage && (
+            <Alert variant="error" title="Schedule Error">
+              {errorMessage}
+            </Alert>
+          )}
+
+          {successMessage && (
+            <Alert variant="success" title="Success">
+              {successMessage}
             </Alert>
           )}
 
@@ -143,7 +302,7 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
                 <span>Vacation / Temporary Pause Mode</span>
               </div>
               <p className="text-[11px] text-amber-800">
-                When enabled, your profile will be marked unavailable for new immediate dispatches.
+                When enabled, your profile will be marked unavailable for customer search and booking dispatches.
               </p>
             </div>
 
@@ -163,7 +322,7 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
             <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden bg-white">
               {schedule.map((item) => (
                 <div
-                  key={item.day}
+                  key={item.dayOfWeek}
                   className={`p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
                     item.isAvailable ? 'bg-white' : 'bg-neutral-50/60 opacity-60'
                   }`}
@@ -171,13 +330,13 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
                   <div className="flex items-center gap-3 sm:w-36">
                     <input
                       type="checkbox"
-                      id={`day-${item.day}`}
+                      id={`day-${item.dayOfWeek}`}
                       checked={item.isAvailable}
-                      onChange={() => handleToggleDay(item.day)}
+                      onChange={() => handleToggleDay(item.dayOfWeek)}
                       className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 cursor-pointer"
                     />
                     <label
-                      htmlFor={`day-${item.day}`}
+                      htmlFor={`day-${item.dayOfWeek}`}
                       className="text-xs font-semibold text-neutral-900 cursor-pointer select-none"
                     >
                       {item.dayLabel}
@@ -193,25 +352,38 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
                         <input
                           type="time"
                           value={item.startTime}
-                          onChange={(e) => handleTimeChange(item.day, 'startTime', e.target.value)}
+                          onChange={(e) => handleTimeChange(item.dayOfWeek, 'startTime', e.target.value)}
                           className="px-2 py-1 bg-white border border-neutral-300 rounded text-xs font-mono text-neutral-900 focus:ring-1 focus:ring-primary-500"
                         />
                         <span className="text-[11px] text-neutral-500">To:</span>
                         <input
                           type="time"
                           value={item.endTime}
-                          onChange={(e) => handleTimeChange(item.day, 'endTime', e.target.value)}
+                          onChange={(e) => handleTimeChange(item.dayOfWeek, 'endTime', e.target.value)}
                           className="px-2 py-1 bg-white border border-neutral-300 rounded text-xs font-mono text-neutral-900 focus:ring-1 focus:ring-primary-500"
                         />
                       </div>
 
                       {/* Optional Lunch / Break Window */}
-                      {item.breakStart && item.breakEnd && (
-                        <div className="hidden lg:flex items-center gap-1 text-[11px] text-neutral-500 bg-neutral-100 px-2 py-1 rounded">
-                          <Coffee size={12} className="text-neutral-400" />
-                          <span>Break: {item.breakStart}–{item.breakEnd}</span>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 bg-neutral-50 border border-neutral-200 px-2 py-1 rounded">
+                        <Coffee size={12} className="text-neutral-400" />
+                        <span>Break:</span>
+                        <input
+                          type="time"
+                          value={item.breakStart || ''}
+                          onChange={(e) => handleTimeChange(item.dayOfWeek, 'breakStart', e.target.value)}
+                          placeholder="Break Start"
+                          className="px-1 py-0.5 bg-white border border-neutral-300 rounded text-[11px] font-mono text-neutral-800"
+                        />
+                        <span>–</span>
+                        <input
+                          type="time"
+                          value={item.breakEnd || ''}
+                          onChange={(e) => handleTimeChange(item.dayOfWeek, 'breakEnd', e.target.value)}
+                          placeholder="Break End"
+                          className="px-1 py-0.5 bg-white border border-neutral-300 rounded text-[11px] font-mono text-neutral-800"
+                        />
+                      </div>
                     </div>
                   ) : (
                     <span className="text-xs text-neutral-500 italic">Marked Unavailable</span>
@@ -227,11 +399,11 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
               Specific Date Overrides &amp; Holiday Blocks
             </label>
 
-            {overrides.length > 0 && (
+            {overrides.length > 0 ? (
               <div className="space-y-2">
-                {overrides.map((ov, idx) => (
+                {overrides.map((ov) => (
                   <div
-                    key={idx}
+                    key={ov.id}
                     className="flex items-center justify-between p-2.5 rounded-lg border border-neutral-200 bg-neutral-50 text-xs"
                   >
                     <div className="flex items-center gap-2">
@@ -243,12 +415,12 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
                       >
                         {ov.isAvailable ? 'Special Available Day' : 'Blocked / Off-Duty'}
                       </span>
-                      {ov.note && <span className="text-neutral-500 text-[11px]">— {ov.note}</span>}
+                      {ov.reason && <span className="text-neutral-500 text-[11px]">— {ov.reason}</span>}
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => handleRemoveOverride(idx)}
+                      onClick={() => handleRemoveOverride(ov.id, ov.date)}
                       className="p-1 text-neutral-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
                       aria-label="Remove override"
                     >
@@ -256,6 +428,10 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
                     </button>
                   </div>
                 ))}
+              </div>
+            ) : (
+              <div className="p-3 text-center border border-dashed border-neutral-200 rounded-lg text-xs text-neutral-500">
+                No specific date overrides configured. Your recurring weekly schedule applies to all dates.
               </div>
             )}
 
@@ -285,9 +461,9 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
 
               <div className="flex-1 w-full sm:w-auto">
                 <Input
-                  placeholder="Reason / Note (optional)"
-                  value={newOverrideNote}
-                  onChange={(e) => setNewOverrideNote(e.target.value)}
+                  placeholder="Reason / Note (e.g. National Holiday, Extra Shift)"
+                  value={newOverrideReason}
+                  onChange={(e) => setNewOverrideReason(e.target.value)}
                 />
               </div>
 
@@ -295,7 +471,8 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
                 type="submit"
                 variant="outline"
                 size="sm"
-                leftIcon={<Plus size={14} />}
+                leftIcon={isAddingOverride ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                disabled={isAddingOverride || !newOverrideDate}
                 className="shrink-0 w-full sm:w-auto text-xs"
               >
                 Add Date Override
@@ -306,17 +483,18 @@ export const AvailabilityEditor: React.FC<AvailabilityEditorProps> = ({
 
         <CardFooter className="pt-4 border-t border-neutral-100 flex items-center justify-between">
           <span className="text-[11px] text-neutral-500">
-            Changes apply to incoming booking requests.
+            Changes are saved to your real database profile and affect search dispatching.
           </span>
 
           <Button
             type="button"
             variant="primary"
             size="md"
-            leftIcon={<Save size={15} />}
+            leftIcon={isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+            disabled={isSaving}
             onClick={handleSave}
           >
-            Save Schedule
+            {isSaving ? 'Saving...' : 'Save Schedule'}
           </Button>
         </CardFooter>
       </Card>

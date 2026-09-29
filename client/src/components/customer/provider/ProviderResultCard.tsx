@@ -1,15 +1,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Star, MapPin, Clock, ArrowRight } from 'lucide-react';
+import { MapPin, Clock, ArrowRight, CheckCircle2, Wrench } from 'lucide-react';
 import { Card, CardContent } from '../../ui/Card';
 import { Avatar } from '../../ui/Avatar';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { cn } from '../../../lib/utils';
+import type { ProviderSearchResultItem, MatchReason } from '@sevasetu/shared';
 import type { ProviderSummary } from '../../../types';
 
 export interface ProviderResultCardProps {
-  provider: ProviderSummary;
+  provider: ProviderSearchResultItem | ProviderSummary;
   onViewProfile?: (id: string) => void;
   onRequestService?: (id: string) => void;
   className?: string;
@@ -19,22 +20,53 @@ export const ProviderResultCard: React.FC<ProviderResultCardProps> = ({
   provider,
   className,
 }) => {
-  // Extract initials from fullName
-  const initials = provider.fullName
-    ? provider.fullName
-        .split(' ')
-        .map((part) => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : 'SP';
+  // Normalize provider data between ProviderSearchResultItem and ProviderSummary
+  const isSearchResult = 'matchReasons' in provider;
+  const pSearchResult = isSearchResult ? (provider as ProviderSearchResultItem) : null;
+  const pSummary = !isSearchResult ? (provider as ProviderSummary) : null;
+
+  const displayName =
+    pSearchResult?.displayName ||
+    pSummary?.fullName ||
+    'Verified Specialist';
+
+  const initials = displayName
+    .split(' ')
+    .map((part: string) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'SP';
+
+  const matchedServiceTitle = pSearchResult?.matchedService?.serviceTitle;
+  const categoryNames =
+    pSummary?.categoryNames ||
+    (pSearchResult?.matchedService ? [pSearchResult.matchedService.categorySlug] : []);
+
+  const pricingDisplay =
+    pSummary?.pricingDisplay ||
+    (pSearchResult?.matchedService?.price
+      ? `₹${pSearchResult.matchedService.price} (${pSearchResult.matchedService.pricingModel.replace('_', ' ')})`
+      : pSearchResult?.matchedService?.pricingModel
+      ? pSearchResult.matchedService.pricingModel.replace('_', ' ')
+      : undefined);
+
+  const skillsList: string[] = pSearchResult
+    ? pSearchResult.skills.map((s) => s.name)
+    : pSummary?.skills || [];
+
+  const serviceArea =
+    pSearchResult?.serviceAreaSummary ||
+    pSearchResult?.serviceAreas?.[0]?.city ||
+    '';
+
+  const matchReasons: MatchReason[] = pSearchResult?.matchReasons || [];
 
   return (
     <Card
       variant="default"
       padding="none"
       className={cn(
-        'overflow-hidden transition-all duration-200 hover:shadow-md hover:border-neutral-300',
+        'overflow-hidden transition-all duration-200 hover:shadow-md hover:border-neutral-300 bg-white',
         className
       )}
     >
@@ -43,57 +75,79 @@ export const ProviderResultCard: React.FC<ProviderResultCardProps> = ({
           {/* Provider Identity & Category */}
           <div className="flex items-center gap-3.5">
             <Avatar
-              src={provider.avatarUrl}
+              src={provider.avatarUrl || undefined}
               initials={initials}
               size="lg"
-              status={provider.isAvailableNow ? 'online' : undefined}
             />
 
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold text-base text-neutral-900 leading-tight">
-                  {provider.fullName}
+                  {displayName}
                 </h3>
-                {provider.verified && (
-                  <Badge variant="success" size="sm" icon={<ShieldCheck size={12} />}>
-                    Verified
+                {pSearchResult?.businessName && pSearchResult.businessName !== displayName && (
+                  <span className="text-xs text-neutral-500 font-normal">
+                    ({pSearchResult.businessName})
+                  </span>
+                )}
+                {pSearchResult?.matchScore !== undefined && (
+                  <Badge variant="info" size="sm" className="text-[10px] font-mono font-bold">
+                    {pSearchResult.matchScore}% Match
                   </Badge>
                 )}
               </div>
 
-              {provider.categoryNames && provider.categoryNames.length > 0 && (
-                <p className="text-xs text-neutral-600 font-medium">
-                  {provider.categoryNames.join(' • ')}
+              {matchedServiceTitle ? (
+                <p className="text-xs text-primary-700 font-medium flex items-center gap-1">
+                  <Wrench size={12} />
+                  <span>{matchedServiceTitle}</span>
                 </p>
-              )}
+              ) : categoryNames.length > 0 ? (
+                <p className="text-xs text-neutral-600 font-medium">
+                  {categoryNames.join(' • ')}
+                </p>
+              ) : null}
             </div>
           </div>
 
-          {/* Pricing & Rating Info */}
+          {/* Pricing Info (Truthful, No Fake Ratings) */}
           <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2">
-            {provider.pricingDisplay && (
+            {pricingDisplay && (
               <span className="font-bold text-sm sm:text-base text-neutral-900 font-mono">
-                {provider.pricingDisplay}
+                {pricingDisplay}
               </span>
             )}
-
-            {provider.averageRating !== undefined && (
-              <div className="flex items-center gap-1 text-xs text-neutral-700 font-medium">
-                <Star size={13} className="text-amber-500 fill-amber-500" aria-hidden="true" />
-                <span>{provider.averageRating.toFixed(1)}</span>
-                {provider.totalReviews !== undefined && (
-                  <span className="text-neutral-600">({provider.totalReviews})</span>
-                )}
-              </div>
-            )}
+            <Badge variant="success" size="sm" className="text-[10px]">
+              Verified Onboarding
+            </Badge>
           </div>
         </div>
 
+        {/* Match Explanations (Explainable Matching) */}
+        {matchReasons.length > 0 && (
+          <div className="pt-3 pb-1 border-b border-neutral-100">
+            <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
+              Why this provider matches:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {matchReasons.map((r, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-50 text-primary-800 text-[11px] font-medium"
+                >
+                  <CheckCircle2 size={11} className="text-primary-600 shrink-0" />
+                  <span>{r.message}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Skills & Auxiliary Metadata */}
-        <div className="pt-4 space-y-3">
-          {provider.skills && provider.skills.length > 0 && (
+        <div className="pt-3 space-y-2">
+          {skillsList.length > 0 && (
             <div className="flex flex-wrap gap-1.5" aria-label="Provider Skills">
-              {provider.skills.map((skill) => (
+              {skillsList.map((skill: string) => (
                 <span
                   key={skill}
                   className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 text-xs font-medium"
@@ -105,25 +159,33 @@ export const ProviderResultCard: React.FC<ProviderResultCardProps> = ({
           )}
 
           <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-600 pt-1">
-            {provider.experienceYears !== undefined && (
+            {provider.experienceYears !== undefined && provider.experienceYears > 0 && (
               <span className="font-medium text-neutral-700">
-                {provider.experienceYears}+ years experience
+                {provider.experienceYears} {provider.experienceYears === 1 ? 'year' : 'years'} experience
               </span>
             )}
 
-            {provider.distanceKm !== undefined && (
+            {serviceArea && (
               <span className="flex items-center gap-1">
                 <MapPin size={13} className="text-neutral-400" />
-                <span>{provider.distanceKm} km away</span>
+                <span>{serviceArea}</span>
               </span>
             )}
 
-            {provider.isAvailableNow !== undefined && (
+            {pSearchResult?.isAvailableForSchedule !== undefined ? (
               <span className="flex items-center gap-1 font-medium">
-                <Clock size={13} className={provider.isAvailableNow ? 'text-emerald-600' : 'text-neutral-400'} />
-                <span className={provider.isAvailableNow ? 'text-emerald-700' : 'text-neutral-600'}>
-                  {provider.isAvailableNow ? 'Available Today' : 'Schedule in advance'}
+                <Clock
+                  size={13}
+                  className={pSearchResult.isAvailableForSchedule ? 'text-emerald-600' : 'text-neutral-400'}
+                />
+                <span className={pSearchResult.isAvailableForSchedule ? 'text-emerald-700 font-semibold' : 'text-neutral-600'}>
+                  {pSearchResult.isAvailableForSchedule ? 'Available for Requested Schedule' : 'Schedule Conflict'}
                 </span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 font-medium text-neutral-600">
+                <Clock size={13} className="text-neutral-400" />
+                <span>Schedule available upon request</span>
               </span>
             )}
           </div>
@@ -137,7 +199,13 @@ export const ProviderResultCard: React.FC<ProviderResultCardProps> = ({
             </Button>
           </Link>
 
-          <Link to={`/request?providerId=${provider.id}`}>
+          <Link
+            to={
+              pSearchResult?.matchedService?.serviceId
+                ? `/request?providerId=${provider.id}&serviceId=${pSearchResult.matchedService.serviceId}`
+                : `/request?providerId=${provider.id}`
+            }
+          >
             <Button variant="primary" size="sm" rightIcon={<ArrowRight size={14} />}>
               Request Service
             </Button>

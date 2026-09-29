@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import { ProviderController } from '../controllers/provider.controller.js';
+import { AvailabilityController } from '../controllers/availability.controller.js';
+import { SearchController } from '../controllers/search.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-// Public Provider Profile endpoint
+// Public Provider Search & Discovery Endpoints
+// Note: '/providers/search' must be defined BEFORE '/providers/:id'
+router.get('/providers/search', SearchController.searchProviders);
+router.get('/providers/:id/availability', SearchController.checkProviderAvailability);
 router.get('/providers/:id', ProviderController.getPublicProfile);
 
 // Authenticated Provider-Only Management Endpoints
@@ -34,4 +39,12 @@ router.post('/provider/service-area', providerAuth, ProviderController.setServic
 router.get('/provider/onboarding', providerAuth, ProviderController.getOnboardingState);
 router.post('/provider/onboarding/complete', providerAuth, ProviderController.completeOnboarding);
 
+// Provider Availability & Schedule Management
+router.get('/provider/availability', providerAuth, AvailabilityController.getAvailability);
+router.put('/provider/availability', providerAuth, AvailabilityController.setAvailability);
+router.post('/provider/availability', providerAuth, AvailabilityController.setAvailability);
+router.post('/provider/availability/overrides', providerAuth, AvailabilityController.createOverride);
+router.delete('/provider/availability/overrides/:id', providerAuth, AvailabilityController.deleteOverride);
+
 export default router;
+

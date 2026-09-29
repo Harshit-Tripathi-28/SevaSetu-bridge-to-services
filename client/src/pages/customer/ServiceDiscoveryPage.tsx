@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { PlusCircle, Search, RefreshCw, Layers, ArrowRight, Loader2 } from 'lucide-react';
+import { PlusCircle, Search, RefreshCw, Layers, ArrowRight, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
+import { Alert } from '../../components/ui/Alert';
 import { ServiceSearchFilters } from '../../components/customer/discovery/ServiceSearchFilters';
 import { ProviderResultCard } from '../../components/customer/provider/ProviderResultCard';
 import { ProviderResultSkeleton } from '../../components/customer/provider/ProviderResultSkeleton';
 import { catalogService } from '../../services/catalog.service';
+import { providerService } from '../../services/provider.service';
 import { CORE_SERVICE_CATEGORIES } from '../../constants/categories';
-import type { ServiceCategory, Service as CatalogService } from '@sevasetu/shared';
-import type { ProviderSummary } from '../../types';
+import type { ServiceCategory, Service as CatalogService, ProviderSearchResultItem, ProviderSearchQuery } from '@sevasetu/shared';
 
 export const ServiceDiscoveryPage: React.FC = () => {
   const { category: paramCategory } = useParams<{ category?: string }>();
@@ -23,17 +24,22 @@ export const ServiceDiscoveryPage: React.FC = () => {
   const [keyword, setKeyword] = useState(searchParams.get('q') || '');
   const [category, setCategory] = useState(paramCategory || searchParams.get('category') || '');
   const [location, setLocation] = useState(searchParams.get('loc') || '');
-  const [preferredDate, setPreferredDate] = useState('');
-  const [sortBy, setSortBy] = useState('recommended');
+  const [preferredDate, setPreferredDate] = useState(searchParams.get('date') || '');
+  const [preferredTime, setPreferredTime] = useState(searchParams.get('time') || '');
+  const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'recommended');
+  const [page, setPage] = useState(1);
 
   // Real backend catalog state
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [services, setServices] = useState<CatalogService[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
 
-  // Preview loading / mock inspection state
-  const [isLoading, setIsLoading] = useState(false);
-  const [showSkeletonDemo, setShowSkeletonDemo] = useState(false);
+  // Real backend providers search state
+  const [providers, setProviders] = useState<ProviderSearchResultItem[]>([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingProviders, setLoadingProviders] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // Sync category param with filter state
   useEffect(() => {
@@ -56,7 +62,7 @@ export const ServiceDiscoveryPage: React.FC = () => {
           setCategories(cats);
           setServices(svcs);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('Failed to load service catalog:', err);
       } finally {
         if (isMounted) setLoadingCatalog(false);
@@ -68,6 +74,62 @@ export const ServiceDiscoveryPage: React.FC = () => {
     };
   }, [category]);
 
+  // Execute Real Provider Search against PostgreSQL API
+  const performSearch = useCallback(async () => {
+    setLoadingProviders(true);
+    setSearchError(null);
+
+    try {
+      const query: ProviderSearchQuery = {
+        page,
+        limit: 10,
+        sortBy: sortBy === 'experience' ? 'experience' : 'recommended',
+      };
+
+      if (keyword.trim()) query.keyword = keyword.trim();
+      if (category.trim()) query.categorySlug = category.trim();
+
+      if (location.trim()) {
+        const loc = location.trim();
+        if (/^\d{6}$/.test(loc)) {
+          query.postalCode = loc;
+        } else {
+          query.city = loc;
+          query.locality = loc;
+        }
+      }
+
+      if (preferredDate) {
+        query.date = preferredDate;
+        if (preferredTime) {
+          query.startTime = preferredTime;
+          query.durationHours = 1;
+        }
+      }
+
+      const res = await providerService.searchProviders(query);
+      setProviders(res.results);
+      setTotalResults(res.total);
+      setTotalPages(res.totalPages || 1);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unable to connect to search service';
+      setSearchError(message);
+      setProviders([]);
+      setTotalResults(0);
+    } finally {
+      setLoadingProviders(false);
+    }
+  }, [keyword, category, location, preferredDate, preferredTime, sortBy, page]);
+
+  // Trigger search on filter change (debounced for text inputs)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      performSearch();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [performSearch]);
+
   const activeCategoryObj = categories.find((c) => c.slug === category);
 
   const handleResetFilters = () => {
@@ -75,16 +137,20 @@ export const ServiceDiscoveryPage: React.FC = () => {
     setCategory('');
     setLocation('');
     setPreferredDate('');
+    setPreferredTime('');
     setSortBy('recommended');
+    setPage(1);
     setSearchParams({});
   };
 
-  // Real backend providers array: currently empty because provider registration / onboarding is in later phases
-  const providers: ProviderSummary[] = [];
-
-  const handleTriggerSimulatedFetch = () => {
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 800);
+  const handleCategorySelect = (val: string) => {
+    setCategory(val);
+    setPage(1);
+    const newParams: Record<string, string> = {};
+    if (val) newParams.category = val;
+    if (keyword) newParams.q = keyword;
+    if (location) newParams.loc = location;
+    setSearchParams(newParams);
   };
 
   return (
@@ -103,13 +169,6 @@ export const ServiceDiscoveryPage: React.FC = () => {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowSkeletonDemo(!showSkeletonDemo)}
-            >
-              {showSkeletonDemo ? 'Hide Skeleton Preview' : 'Preview Loading State'}
-            </Button>
             <Link to="/request">
               <Button variant="primary" size="sm" leftIcon={<PlusCircle size={14} />}>
                 Request Custom Service
@@ -122,22 +181,32 @@ export const ServiceDiscoveryPage: React.FC = () => {
       {/* Filter Bar Component */}
       <ServiceSearchFilters
         keyword={keyword}
-        onKeywordChange={setKeyword}
-        selectedCategory={category}
-        onCategoryChange={(val) => {
-          setCategory(val);
-          if (val) {
-            setSearchParams({ category: val });
-          } else {
-            setSearchParams({});
-          }
+        onKeywordChange={(val) => {
+          setKeyword(val);
+          setPage(1);
         }}
+        selectedCategory={category}
+        onCategoryChange={handleCategorySelect}
         location={location}
-        onLocationChange={setLocation}
+        onLocationChange={(val) => {
+          setLocation(val);
+          setPage(1);
+        }}
         preferredDate={preferredDate}
-        onDateChange={setPreferredDate}
+        onDateChange={(val) => {
+          setPreferredDate(val);
+          setPage(1);
+        }}
+        preferredTime={preferredTime}
+        onTimeChange={(val) => {
+          setPreferredTime(val);
+          setPage(1);
+        }}
         sortBy={sortBy}
-        onSortChange={setSortBy}
+        onSortChange={(val) => {
+          setSortBy(val);
+          setPage(1);
+        }}
         onReset={handleResetFilters}
         categories={categories.length > 0 ? categories : CORE_SERVICE_CATEGORIES}
       />
@@ -182,7 +251,7 @@ export const ServiceDiscoveryPage: React.FC = () => {
                       Active Catalog
                     </Badge>
                   </div>
-                  <CardTitle className="text-sm font-bold text-neutral-900 line-clamp-1">{svc.name || svc.title}</CardTitle>
+                  <CardTitle className="text-sm font-bold text-neutral-900 line-clamp-1">{svc.title}</CardTitle>
                   <CardDescription className="text-xs text-neutral-600 line-clamp-2 mt-1">
                     {svc.description}
                   </CardDescription>
@@ -204,29 +273,47 @@ export const ServiceDiscoveryPage: React.FC = () => {
       {/* Results Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between text-xs text-neutral-600 px-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-neutral-900">
-              {showSkeletonDemo ? 'Loading preview...' : `${providers.length} Verified Professionals Available`}
+              {loadingProviders ? 'Searching active providers...' : `${totalResults} Verified Professional${totalResults === 1 ? '' : 's'} Available`}
             </span>
             {category && (
               <Badge variant="neutral" size="sm">
                 Category: {activeCategoryObj?.name || category}
               </Badge>
             )}
+            {preferredDate && (
+              <Badge variant="info" size="sm">
+                Date: {preferredDate} {preferredTime ? `@ ${preferredTime}` : ''}
+              </Badge>
+            )}
           </div>
 
           <button
             type="button"
-            onClick={handleTriggerSimulatedFetch}
-            className="flex items-center gap-1 hover:text-neutral-900 transition-colors cursor-pointer"
+            onClick={performSearch}
+            className="flex items-center gap-1 hover:text-neutral-900 transition-colors cursor-pointer text-xs"
+            disabled={loadingProviders}
           >
-            <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={12} className={loadingProviders ? 'animate-spin' : ''} />
             <span>Refresh Results</span>
           </button>
         </div>
 
-        {/* Loading Skeleton Demo Mode */}
-        {isLoading || showSkeletonDemo ? (
+        {/* Server / Network Error Banner */}
+        {searchError && (
+          <Alert variant="error" title="Search Service Error">
+            <div className="flex items-center justify-between">
+              <span>{searchError}</span>
+              <Button variant="outline" size="sm" onClick={performSearch} className="text-xs ml-4">
+                Retry Search
+              </Button>
+            </div>
+          </Alert>
+        )}
+
+        {/* Loading State Skeleton */}
+        {loadingProviders ? (
           <div className="space-y-4">
             <ProviderResultSkeleton />
             <ProviderResultSkeleton />
@@ -236,13 +323,50 @@ export const ServiceDiscoveryPage: React.FC = () => {
             {providers.map((p) => (
               <ProviderResultCard key={p.id} provider={p} />
             ))}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between p-4 bg-white border border-neutral-200 rounded-xl text-xs">
+                <span className="text-neutral-600">
+                  Page {page} of {totalPages} ({totalResults} total results)
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    leftIcon={<ChevronLeft size={14} />}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    rightIcon={<ChevronRight size={14} />}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          /* Honest Empty State: No fabricated profiles */
+          /* Honest Empty State: Based on Real Database Results */
           <EmptyState
             icon={<Search size={26} className="text-neutral-400" />}
-            title="No verified service providers currently listed"
-            description="Provider registration and live service matching will be onboarded in upcoming platform phases. You can submit a structured service request in the meantime."
+            title={
+              keyword || category || location || preferredDate
+                ? 'No verified providers match your exact filters'
+                : 'No verified service providers currently listed'
+            }
+            description={
+              keyword || category || location || preferredDate
+                ? 'Try adjusting your search criteria, widening the service area, or choosing a different date/time.'
+                : 'As verified providers complete onboarding and publish their schedules, they will appear here.'
+            }
             action={
               <div className="flex flex-col sm:flex-row items-center gap-2.5">
                 <Link to="/request">
@@ -250,7 +374,7 @@ export const ServiceDiscoveryPage: React.FC = () => {
                     Submit Service Request
                   </Button>
                 </Link>
-                {(keyword || category || location) && (
+                {(keyword || category || location || preferredDate) && (
                   <Button variant="outline" size="sm" onClick={handleResetFilters}>
                     Clear Active Filters
                   </Button>

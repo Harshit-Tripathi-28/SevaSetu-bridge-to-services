@@ -404,3 +404,176 @@ export interface CustomerActivityItem {
   canRebook?: boolean;
   createdAt: string;
 }
+
+/**
+ * Functional Phase 3: Real Search, Discovery, Availability & Matching Contracts
+ */
+
+export type DayOfWeek =
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY'
+  | 'SUNDAY';
+
+export interface ProviderAvailabilityItem {
+  id: string;
+  providerProfileId: string;
+  dayOfWeek: DayOfWeek;
+  startTime: string; // "09:00"
+  endTime: string;   // "18:00"
+  breakStart?: string | null;
+  breakEnd?: string | null;
+  isAvailable: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AvailabilityOverrideItem {
+  id: string;
+  providerProfileId: string;
+  date: string; // "YYYY-MM-DD"
+  startTime?: string | null;
+  endTime?: string | null;
+  isAvailable: boolean;
+  reason?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProviderAvailabilitySchedule {
+  weeklySchedule: ProviderAvailabilityItem[];
+  vacationMode: boolean;
+  overrides: AvailabilityOverrideItem[];
+}
+
+export interface SetDayScheduleInput {
+  dayOfWeek: DayOfWeek;
+  startTime: string;
+  endTime: string;
+  breakStart?: string | null;
+  breakEnd?: string | null;
+  isAvailable: boolean;
+}
+
+export interface SetAvailabilityRequest {
+  weeklySchedule: SetDayScheduleInput[];
+  vacationMode?: boolean;
+}
+
+export interface CreateOverrideRequest {
+  date: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  isAvailable: boolean;
+  reason?: string | null;
+}
+
+export interface ProviderSearchQuery {
+  keyword?: string;
+  serviceId?: string;
+  categorySlug?: string;
+  categoryId?: string;
+  city?: string;
+  locality?: string;
+  postalCode?: string;
+  date?: string;
+  startTime?: string;
+  durationHours?: number;
+  pricingModel?: CatalogPricingModel;
+  sortBy?: 'recommended' | 'experience' | 'price_low' | 'price_high';
+  page?: number;
+  limit?: number;
+}
+
+export interface MatchReason {
+  code: string;
+  message: string;
+}
+
+export interface MatchedServiceInfo {
+  id: string;
+  serviceId: string;
+  serviceTitle: string;
+  categorySlug: string;
+  pricingModel: CatalogPricingModel;
+  price: number | null;
+  customDescription?: string | null;
+}
+
+export interface ProviderSearchResultItem {
+  id: string; // providerProfileId
+  userId: string;
+  businessName: string | null;
+  displayName: string;
+  bio: string | null;
+  experienceYears: number;
+  avatarUrl: string | null;
+  serviceAreaSummary: string | null;
+  serviceAreas?: Array<{
+    city: string;
+    locality: string;
+    state: string;
+    postalCode: string;
+    radiusKm: number;
+  }>;
+  skills: Array<{
+    id: string;
+    name: string;
+    category: string;
+    experienceLevel: string;
+  }>;
+  offeredServices: Array<{
+    id: string;
+    serviceId: string;
+    serviceTitle: string;
+    categorySlug: string;
+    pricingModel: CatalogPricingModel;
+    price: number | null;
+  }>;
+  matchedService?: MatchedServiceInfo;
+  isAvailableForSchedule?: boolean;
+  matchScore: number;
+  matchReasons: MatchReason[];
+}
+
+export interface ProviderSearchResponse {
+  results: ProviderSearchResultItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  filtersApplied: {
+    keyword?: string;
+    serviceId?: string;
+    categorySlug?: string;
+    city?: string;
+    postalCode?: string;
+    date?: string;
+    startTime?: string;
+    durationHours?: number;
+    sortBy?: string;
+  };
+}
+
+export interface AvailabilityCheckQuery {
+  date: string; // YYYY-MM-DD
+  startTime?: string; // HH:mm
+  durationHours?: number;
+}
+
+export interface AvailabilityCheckResponse {
+  providerId: string;
+  date: string;
+  isAvailable: boolean;
+  reason?: string;
+  workingHours?: {
+    startTime: string;
+    endTime: string;
+    breakStart?: string | null;
+    breakEnd?: string | null;
+  };
+}
+

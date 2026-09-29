@@ -42,6 +42,16 @@ enum AddressLabel {
   OTHER
 }
 
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
 model User {
   id           String        @id @default(uuid())
   email        String        @unique
@@ -131,12 +141,15 @@ model ServiceProviderProfile {
   avatarUrl          String?
   isPubliclyListed   Boolean          @default(false)
   onboardingStatus   OnboardingStatus @default(NOT_STARTED)
+  vacationMode       Boolean          @default(false)
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
-  skills             ProviderSkill[]
-  services           ProviderService[]
-  serviceAreas       ProviderServiceArea[]
+  skills                ProviderSkill[]
+  services              ProviderService[]
+  serviceAreas          ProviderServiceArea[]
+  availabilities        ProviderAvailability[]
+  availabilityOverrides ProviderAvailabilityOverride[]
 
   @@index([userId])
   @@index([onboardingStatus])
@@ -189,4 +202,39 @@ model ProviderServiceArea {
 
   @@index([providerProfileId])
   @@index([city, postalCode])
+}
+
+model ProviderAvailability {
+  id                String                 @id @default(uuid())
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  dayOfWeek         DayOfWeek
+  startTime         String                 // e.g. "09:00"
+  endTime           String                 // e.g. "18:00"
+  breakStart        String?                // e.g. "13:00"
+  breakEnd          String?                // e.g. "14:00"
+  isAvailable       Boolean                @default(true)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([providerProfileId, dayOfWeek])
+  @@index([providerProfileId])
+  @@index([dayOfWeek])
+}
+
+model ProviderAvailabilityOverride {
+  id                String                 @id @default(uuid())
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  date              DateTime               @db.Date
+  startTime         String?                // e.g. "09:00"
+  endTime           String?                // e.g. "14:00"
+  isAvailable       Boolean                @default(false)
+  reason            String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([providerProfileId, date])
+  @@index([providerProfileId])
+  @@index([providerProfileId, date])
 }

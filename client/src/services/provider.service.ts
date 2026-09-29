@@ -12,6 +12,13 @@ import type {
   ProviderOnboardingState,
   PublicProviderProfile,
   ApiResponse,
+  ProviderSearchQuery,
+  ProviderSearchResponse,
+  ProviderAvailabilitySchedule,
+  SetAvailabilityRequest,
+  CreateOverrideRequest,
+  AvailabilityCheckQuery,
+  AvailabilityCheckResponse,
 } from '@sevasetu/shared';
 
 export const providerService = {
@@ -121,6 +128,77 @@ export const providerService = {
     const res = await apiClient.get<ApiResponse<PublicProviderProfile>>(`/providers/${id}`);
     if (!res.success || !res.data) {
       throw new Error(res.message || 'Provider not found or not currently available');
+    }
+    return res.data;
+  },
+
+  async searchProviders(params?: ProviderSearchQuery): Promise<ProviderSearchResponse> {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      if (params.keyword) searchParams.set('keyword', params.keyword);
+      if (params.serviceId) searchParams.set('serviceId', params.serviceId);
+      if (params.categorySlug) searchParams.set('categorySlug', params.categorySlug);
+      if (params.categoryId) searchParams.set('categoryId', params.categoryId);
+      if (params.city) searchParams.set('city', params.city);
+      if (params.locality) searchParams.set('locality', params.locality);
+      if (params.postalCode) searchParams.set('postalCode', params.postalCode);
+      if (params.date) searchParams.set('date', params.date);
+      if (params.startTime) searchParams.set('startTime', params.startTime);
+      if (params.durationHours) searchParams.set('durationHours', String(params.durationHours));
+      if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+      if (params.page) searchParams.set('page', String(params.page));
+      if (params.limit) searchParams.set('limit', String(params.limit));
+    }
+    const qs = searchParams.toString();
+    const url = qs ? `/providers/search?${qs}` : '/providers/search';
+    const res = await apiClient.get<ApiResponse<ProviderSearchResponse>>(url);
+    if (!res.success || !res.data) {
+      throw new Error(res.message || 'Failed to search providers');
+    }
+    return res.data;
+  },
+
+  async getAvailability(): Promise<ProviderAvailabilitySchedule> {
+    const res = await apiClient.get<ApiResponse<ProviderAvailabilitySchedule>>('/provider/availability');
+    if (!res.success || !res.data) {
+      throw new Error(res.message || 'Failed to fetch provider availability');
+    }
+    return res.data;
+  },
+
+  async setAvailability(data: SetAvailabilityRequest): Promise<ProviderAvailabilitySchedule> {
+    const res = await apiClient.put<ApiResponse<ProviderAvailabilitySchedule>>('/provider/availability', data);
+    if (!res.success || !res.data) {
+      throw new Error(res.message || 'Failed to save availability schedule');
+    }
+    return res.data;
+  },
+
+  async createOverride(data: CreateOverrideRequest): Promise<ProviderAvailabilitySchedule> {
+    const res = await apiClient.post<ApiResponse<ProviderAvailabilitySchedule>>('/provider/availability/overrides', data);
+    if (!res.success || !res.data) {
+      throw new Error(res.message || 'Failed to save date override');
+    }
+    return res.data;
+  },
+
+  async deleteOverride(id: string): Promise<void> {
+    const res = await apiClient.delete<ApiResponse<void>>(`/provider/availability/overrides/${id}`);
+    if (!res.success) {
+      throw new Error(res.message || 'Failed to delete availability override');
+    }
+  },
+
+  async checkAvailability(providerId: string, query: AvailabilityCheckQuery): Promise<AvailabilityCheckResponse> {
+    const searchParams = new URLSearchParams();
+    searchParams.set('date', query.date);
+    if (query.startTime) searchParams.set('startTime', query.startTime);
+    if (query.durationHours) searchParams.set('durationHours', String(query.durationHours));
+    const res = await apiClient.get<ApiResponse<AvailabilityCheckResponse>>(
+      `/providers/${providerId}/availability?${searchParams.toString()}`
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.message || 'Failed to check availability');
     }
     return res.data;
   },

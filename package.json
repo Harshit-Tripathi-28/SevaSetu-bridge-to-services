@@ -25,6 +25,7 @@
     "prisma:validate": "npm run prisma:validate --workspace=server",
     "test": "npm run test --workspace=server",
     "test:phase2": "npm run test:phase2 --workspace=server",
+    "test:phase3": "npm run test:phase3 --workspace=server",
     "lint": "eslint ."
   },
   "devDependencies": {
