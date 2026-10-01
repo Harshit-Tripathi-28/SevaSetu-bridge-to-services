@@ -17,6 +17,7 @@ import {
 } from './payment-transition.service.js';
 import { InvoiceService } from './invoice.service.js';
 import { EarningService } from './earning.service.js';
+import { FinancialPolicyService } from './financial-policy.service.js';
 
 
 export class PaymentValidationError extends Error {
@@ -41,10 +42,6 @@ export class PaymentConflictError extends Error {
 }
 
 export class PaymentService {
-  // Explicit Platform Policy Constants
-  private static readonly FREE_CANCELLATION_HOURS = 2;
-  private static readonly LATE_CANCELLATION_FEE_PERCENT = 20;
-
   /**
    * Calculates the authoritative price breakdown for a booking from database snapshots.
    */
@@ -592,17 +589,20 @@ export class PaymentService {
         // Completed jobs are not refundable via automatic cancellation
         refundAmountPaise = 0;
       } else {
+        // Retrieve authoritative configured cancellation policy (throws FinancialPolicyConfigurationError if unconfigured)
+        const policy = FinancialPolicyService.getCancellationPolicy();
+
         // Calculate hours until scheduled service
         const scheduledDateTime = new Date(`${booking.scheduledDate.toISOString().split('T')[0]}T${booking.scheduledStartTime}:00.000Z`);
         const now = new Date();
         const diffHours = (scheduledDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-        if (diffHours >= this.FREE_CANCELLATION_HOURS || booking.status === 'PENDING_PROVIDER' || booking.status === 'ACCEPTED') {
+        if (diffHours >= policy.freeCancellationWindowHours || booking.status === 'PENDING_PROVIDER' || booking.status === 'ACCEPTED') {
           // Free cancellation window: 100% refund
           refundAmountPaise = payment.amount;
         } else {
-          // Late cancellation: Late fee applied, remaining refunded
-          const lateFee = Math.floor((payment.amount * this.LATE_CANCELLATION_FEE_PERCENT) / 100);
+          // Late cancellation: Late fee applied according to configured percentage, remaining refunded
+          const lateFee = Math.floor((payment.amount * policy.lateCancellationFeePercent) / 100);
           refundAmountPaise = payment.amount - lateFee;
         }
       }

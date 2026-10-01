@@ -6,6 +6,7 @@ import type {
   ProviderPayoutRecord,
   ProviderFinancialSummary,
 } from '@sevasetu/shared';
+import { FinancialPolicyService } from './financial-policy.service.js';
 
 export class EarningError extends Error {
   constructor(message: string) {
@@ -15,9 +16,6 @@ export class EarningError extends Error {
 }
 
 export class EarningService {
-  // Standard approved platform commission: 10% of gross service amount
-  private static readonly PLATFORM_COMMISSION_PERCENT = 10;
-
   /**
    * Recognizes provider earning for a completed, paid booking within a PostgreSQL transaction.
    * Enforces double-credit protection through unique constraint and transaction check.
@@ -51,9 +49,10 @@ export class EarningService {
       return existing.id;
     }
 
-    // 2. Exact integer financial calculation
+    // 2. Exact integer financial calculation using configured platform commission (throws if unconfigured)
+    const commissionPercent = FinancialPolicyService.getPlatformCommissionPercent();
     const grossAmount = payment.baseAmount;
-    const platformFee = Math.floor((grossAmount * this.PLATFORM_COMMISSION_PERCENT) / 100);
+    const platformFee = Math.floor((grossAmount * commissionPercent) / 100);
     const taxDeduction = 0; // TDS / GST withholding if statutory rules apply; explicitly 0 unless configured
     const netEarning = grossAmount - platformFee - taxDeduction;
 

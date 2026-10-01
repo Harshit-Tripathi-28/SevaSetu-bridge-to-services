@@ -32,6 +32,11 @@ export interface ServerConfig {
     razorpayKeySecret?: string;
     razorpayWebhookSecret?: string;
   };
+  financialPolicy: {
+    platformCommissionPercent?: number;
+    cancellationFreeWindowHours?: number;
+    cancellationLateFeePercent?: number;
+  };
 }
 
 const nodeEnv = (process.env.NODE_ENV as ServerConfig['nodeEnv']) || 'development';
@@ -58,6 +63,23 @@ export const config: ServerConfig = {
     razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,
     razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
   },
+  financialPolicy: {
+    platformCommissionPercent:
+      process.env.PLATFORM_COMMISSION_PERCENT !== undefined &&
+      process.env.PLATFORM_COMMISSION_PERCENT.trim() !== ''
+        ? Number(process.env.PLATFORM_COMMISSION_PERCENT)
+        : undefined,
+    cancellationFreeWindowHours:
+      process.env.CANCELLATION_FREE_WINDOW_HOURS !== undefined &&
+      process.env.CANCELLATION_FREE_WINDOW_HOURS.trim() !== ''
+        ? Number(process.env.CANCELLATION_FREE_WINDOW_HOURS)
+        : undefined,
+    cancellationLateFeePercent:
+      process.env.CANCELLATION_LATE_FEE_PERCENT !== undefined &&
+      process.env.CANCELLATION_LATE_FEE_PERCENT.trim() !== ''
+        ? Number(process.env.CANCELLATION_LATE_FEE_PERCENT)
+        : undefined,
+  },
 };
 
 export function validateConfig(): void {
@@ -74,5 +96,40 @@ export function validateConfig(): void {
     // Mask credentials before logging
     const maskedUrl = config.databaseUrl.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:****@');
     console.log(`  - Database (PostgreSQL): [CONFIGURED] Target: ${maskedUrl}`);
+  }
+
+  // Validate Financial Policies (Reject unapproved implicit rules)
+  if (config.financialPolicy.platformCommissionPercent !== undefined) {
+    const comm = config.financialPolicy.platformCommissionPercent;
+    if (isNaN(comm) || !Number.isInteger(comm) || comm < 0 || comm > 100) {
+      console.error(
+        `  - Financial Policy: [ERROR] PLATFORM_COMMISSION_PERCENT must be an integer between 0 and 100 (got: ${comm}).`
+      );
+    } else {
+      console.log(`  - Financial Policy: [CONFIGURED] Platform Commission: ${comm}%`);
+    }
+  } else {
+    console.log(
+      '  - Financial Policy: [UNCONFIGURED] PLATFORM_COMMISSION_PERCENT is not set. Earning recognition will reject safely.'
+    );
+  }
+
+  if (
+    config.financialPolicy.cancellationFreeWindowHours !== undefined &&
+    config.financialPolicy.cancellationLateFeePercent !== undefined
+  ) {
+    const hours = config.financialPolicy.cancellationFreeWindowHours;
+    const fee = config.financialPolicy.cancellationLateFeePercent;
+    if (isNaN(hours) || hours < 0 || isNaN(fee) || !Number.isInteger(fee) || fee < 0 || fee > 100) {
+      console.error(
+        `  - Financial Policy: [ERROR] Invalid cancellation policy: Free window hours=${hours}, Late fee percent=${fee}`
+      );
+    } else {
+      console.log(`  - Financial Policy: [CONFIGURED] Cancellation: Free window=${hours}h, Late fee=${fee}%`);
+    }
+  } else {
+    console.log(
+      '  - Financial Policy: [UNCONFIGURED] Cancellation policy is not set. Automated cancellation refunds will reject safely.'
+    );
   }
 }

@@ -6,6 +6,10 @@ import { hashPassword } from '../utils/password.js';
 import { PaymentService } from '../services/payment.service.js';
 import { EarningService } from '../services/earning.service.js';
 import { InvoiceService } from '../services/invoice.service.js';
+import {
+  FinancialPolicyService,
+  FinancialPolicyConfigurationError,
+} from '../services/financial-policy.service.js';
 import { rupeesToPaise, paiseToRupees } from '@sevasetu/shared';
 
 interface TestResult {
@@ -25,6 +29,14 @@ function assert(condition: boolean, message: string) {
 
 async function runPhase5Tests() {
   console.log('=== STARTING SEVASETU FUNCTIONAL PHASE 5 TEST SUITE ===');
+
+  // Explicitly configure test financial policies for test suite:
+  // 15% platform commission, 3 hours free cancellation window, 25% late cancellation fee.
+  FinancialPolicyService.setPolicyOverride({
+    platformCommissionPercent: 15,
+    cancellationFreeWindowHours: 3,
+    cancellationLateFeePercent: 25,
+  });
 
   const app = createApp();
   const server = http.createServer(app);
@@ -774,8 +786,70 @@ async function runPhase5Tests() {
 
   let advanceBooking!: any;
 
-  await runTest(21, 'Authorized free cancellation refund processed (100% refund for > 2 hours)', async () => {
-    // Create paid booking scheduled 24 hours in the future
+  await runTest(21, 'Refund policy missing -> safe failure (FinancialPolicyConfigurationError)', async () => {
+    const unconfBooking = await createTestBooking({
+      customerId: customer1User.id,
+      providerProfileId: provider1Profile.id,
+      status: 'ACCEPTED',
+      priceSnapshot: 500.0,
+      scheduledHoursInFuture: 24,
+    });
+    const unconfPayment = await prisma.payment.create({
+      data: {
+        referenceCode: `PAY-UNCONF-${Date.now()}`,
+        bookingId: unconfBooking.id,
+        customerId: customer1User.id,
+        providerProfileId: provider1Profile.id,
+        gatewayProvider: 'RAZORPAY',
+        amount: 50000,
+        baseAmount: 50000,
+        currency: 'INR',
+        status: 'PAID',
+        paidAt: new Date(),
+      },
+    });
+
+    // Temporarily clear cancellation policy configuration
+    FinancialPolicyService.setPolicyOverride({
+      cancellationFreeWindowHours: undefined,
+      cancellationLateFeePercent: undefined,
+      platformCommissionPercent: 15,
+    });
+
+    let thrown = false;
+    try {
+      await PaymentService.processCancellationRefund(
+        unconfBooking.id,
+        customer1User.id,
+        'CUSTOMER',
+        'Testing missing refund policy'
+      );
+    } catch (err: unknown) {
+      if (err instanceof FinancialPolicyConfigurationError) {
+        thrown = true;
+      }
+    }
+
+    assert(thrown, 'Must throw FinancialPolicyConfigurationError when cancellation policy is unconfigured');
+
+    const refundCount = await prisma.refund.count({
+      where: { bookingId: unconfBooking.id },
+    });
+    assert(refundCount === 0, 'Zero refund records must be created when policy is unconfigured');
+
+    const paymentAfter = await prisma.payment.findUnique({ where: { id: unconfPayment.id } });
+    assert(paymentAfter?.status === 'PAID', 'Payment status must remain PAID without unauthorized mutation');
+
+    // Restore test policy
+    FinancialPolicyService.setPolicyOverride({
+      cancellationFreeWindowHours: 3,
+      cancellationLateFeePercent: 25,
+      platformCommissionPercent: 15,
+    });
+  });
+
+  await runTest(22, 'Refund policy configured -> free cancellation window honors configured hours (100% refund)', async () => {
+    // Create paid booking scheduled 24 hours in the future (exceeds 3h window)
     advanceBooking = await createTestBooking({
       customerId: customer1User.id,
       providerProfileId: provider1Profile.id,
@@ -817,7 +891,7 @@ async function runPhase5Tests() {
     assert(updatedPayment?.status === 'REFUNDED', `Expected payment status REFUNDED, got ${updatedPayment?.status}`);
   });
 
-  await runTest(22, 'Duplicate refund prevented (Idempotent refunding)', async () => {
+  await runTest(23, 'Duplicate refund prevented (Idempotent refunding)', async () => {
     // Re-running refund process for the already refunded booking
     const refundAgain = await PaymentService.processCancellationRefund(
       advanceBooking.id,
@@ -833,7 +907,7 @@ async function runPhase5Tests() {
     assert(refundCount === 1, 'Cannot create more than 1 refund record for single cancellation');
   });
 
-  await runTest(23, 'Refund state transitions are validated and protected', async () => {
+  await runTest(24, 'Refund state transitions are validated and protected', async () => {
     // Valid transition from PENDING -> COMPLETED is allowed; arbitrary transitions rejected
     const testRefund = await prisma.refund.create({
       data: {
@@ -856,14 +930,14 @@ async function runPhase5Tests() {
     assert(updated.status === 'COMPLETED', 'Refund successfully transitioned to COMPLETED');
   });
 
-  await runTest(24, 'Cancellation refund applies 20% late fee when cancelled <= 2 hours before service', async () => {
-    // Create paid booking scheduled only 1 hour in the future
+  await runTest(25, 'Refund policy configured -> calculation follows configured late fee percentage (25% fee)', async () => {
+    // Create paid booking scheduled only 1 hour in the future (< 3 hours configured window)
     const lateBooking = await createTestBooking({
       customerId: customer1User.id,
       providerProfileId: provider1Profile.id,
       status: 'IN_PROGRESS',
       priceSnapshot: 1000.0, // 100000 paise
-      scheduledHoursInFuture: 1, // <= 2 hours!
+      scheduledHoursInFuture: 1,
     });
 
     const payment = await prisma.payment.create({
@@ -890,20 +964,75 @@ async function runPhase5Tests() {
     );
 
     assert(Boolean(refund), 'Refund record must be created');
-    // 100000 - 20% (20000) = 80000 paise
-    assert(refund!.amount === 80000, `Expected 80000 paise (80%), got ${refund!.amount}`);
+    // 100000 - 25% (25000) = 75000 paise
+    assert(refund!.amount === 75000, `Expected 75000 paise (75%), got ${refund!.amount}`);
 
     const updatedPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
     assert(updatedPayment?.status === 'PARTIALLY_REFUNDED', `Expected PARTIALLY_REFUNDED, got ${updatedPayment?.status}`);
   });
 
   // ==========================================
-  // PROVIDER EARNINGS TESTS (25 - 28)
+  // PROVIDER EARNINGS TESTS (26 - 30)
   // ==========================================
 
   let earningBooking!: any;
 
-  await runTest(25, 'Earning created from completed booking financial event', async () => {
+  await runTest(26, 'Commission configuration missing -> safe failure (FinancialPolicyConfigurationError)', async () => {
+    const unconfEarningBooking = await createTestBooking({
+      customerId: customer1User.id,
+      providerProfileId: provider1Profile.id,
+      status: 'COMPLETED',
+      priceSnapshot: 600.0,
+    });
+    const unconfEarningPayment = await prisma.payment.create({
+      data: {
+        referenceCode: `PAY-EARN-UNCONF-${Date.now()}`,
+        bookingId: unconfEarningBooking.id,
+        customerId: customer1User.id,
+        providerProfileId: provider1Profile.id,
+        gatewayProvider: 'RAZORPAY',
+        amount: 60000,
+        baseAmount: 60000,
+        currency: 'INR',
+        status: 'PAID',
+        paidAt: new Date(),
+      },
+    });
+
+    // Clear platform commission configuration
+    FinancialPolicyService.setPolicyOverride({
+      platformCommissionPercent: undefined,
+      cancellationFreeWindowHours: 3,
+      cancellationLateFeePercent: 25,
+    });
+
+    let thrown = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await EarningService.recognizeEarningForBooking(tx, unconfEarningBooking, unconfEarningPayment);
+      });
+    } catch (err: unknown) {
+      if (err instanceof FinancialPolicyConfigurationError) {
+        thrown = true;
+      }
+    }
+
+    assert(thrown, 'Must throw FinancialPolicyConfigurationError when platform commission is unconfigured');
+
+    const earningCount = await prisma.providerEarning.count({
+      where: { bookingId: unconfEarningBooking.id },
+    });
+    assert(earningCount === 0, 'Zero earning records must be created when commission is unconfigured');
+
+    // Restore test policy
+    FinancialPolicyService.setPolicyOverride({
+      platformCommissionPercent: 15,
+      cancellationFreeWindowHours: 3,
+      cancellationLateFeePercent: 25,
+    });
+  });
+
+  await runTest(27, 'Commission configuration present -> correct exact calculation (15% commission)', async () => {
     earningBooking = await createTestBooking({
       customerId: customer1User.id,
       providerProfileId: provider1Profile.id,
@@ -936,12 +1065,13 @@ async function runPhase5Tests() {
     const dbEarning = await prisma.providerEarning.findUnique({ where: { id: earningId! } });
     assert(Boolean(dbEarning), 'Earning record must exist in database');
     assert(dbEarning?.grossAmount === 120000, 'Gross amount must be 120000 paise');
-    assert(dbEarning?.platformFee === 12000, `10% Platform fee must be 12000 paise, got ${dbEarning?.platformFee}`);
-    assert(dbEarning?.netEarning === 108000, `Net earning must be 108000 paise, got ${dbEarning?.netEarning}`);
+    // Configured commission is 15% of 120000 paise = 18000 paise
+    assert(dbEarning?.platformFee === 18000, `15% Platform fee must be 18000 paise, got ${dbEarning?.platformFee}`);
+    assert(dbEarning?.netEarning === 102000, `Net earning must be 102000 paise, got ${dbEarning?.netEarning}`);
     assert(dbEarning?.status === 'AVAILABLE', 'Earning status must be AVAILABLE');
   });
 
-  await runTest(26, 'Duplicate financial event does not double-credit (Constraint & idempotency)', async () => {
+  await runTest(28, 'Duplicate financial event does not double-credit (Constraint & idempotency)', async () => {
     // Attempt to recognize earning again for the same booking
     const secondCallEarningId = await prisma.$transaction(async (tx) => {
       const dummyPayment = { id: 'dummy_pay', baseAmount: 120000, amount: 120000, currency: 'INR' };
@@ -960,7 +1090,7 @@ async function runPhase5Tests() {
     assert(count === 1, `Expected exactly 1 earning record, found ${count}`);
   });
 
-  await runTest(27, 'Provider earnings ownership enforced (Provider 2 cannot see Provider 1)', async () => {
+  await runTest(29, 'Provider earnings ownership enforced (Provider 2 cannot see Provider 1)', async () => {
     const res = await apiCall('/api/provider/earnings', {
       method: 'GET',
       cookie: prov2Cookie,
@@ -972,26 +1102,26 @@ async function runPhase5Tests() {
     assert(earnings.length === 0, `Provider 2 must have 0 earnings, found ${earnings.length}`);
   });
 
-  await runTest(28, 'Net amount calculation exact without floating-point errors', async () => {
+  await runTest(30, 'Net amount calculation exact without floating-point errors (15% configured rate)', async () => {
     // Test conversion utilities and exact integer math
     const rupees = 1200.50;
     const paise = rupeesToPaise(rupees);
     assert(paise === 120050, `Expected 120050 paise, got ${paise}`);
     assert(paiseToRupees(paise) === 1200.5, 'Rupees conversion must match');
 
-    // 10% platform fee of 120050 paise:
-    const commission = Math.floor((paise * 10) / 100);
-    assert(commission === 12005, `Expected 12005 paise, got ${commission}`);
+    // 15% platform fee of 120050 paise:
+    const commission = Math.floor((paise * 15) / 100);
+    assert(commission === 18007, `Expected 18007 paise, got ${commission}`);
     const net = paise - commission;
-    assert(net === 108045, `Expected 108045 paise, got ${net}`);
+    assert(net === 102043, `Expected 102043 paise, got ${net}`);
   });
 
   // ==========================================
-  // PAYOUT TESTS (29 - 30)
+  // PAYOUT TESTS (31 - 32)
   // ==========================================
 
-  await runTest(29, 'Provider payout request created and readable only by owner', async () => {
-    // Provider 1 requests 50000 paise (500 INR) payout from available 108000 paise
+  await runTest(31, 'Provider payout request created and readable only by owner', async () => {
+    // Provider 1 requests 50000 paise (500 INR) payout from available 102000 paise
     const res = await apiCall('/api/provider/payouts', {
       method: 'POST',
       cookie: prov1Cookie,
@@ -1028,7 +1158,7 @@ async function runPhase5Tests() {
     assert(Array.isArray(p2Payouts) && p2Payouts.length === 0, 'Provider 2 sees 0 payouts');
   });
 
-  await runTest(30, 'Payout request exceeding available balance rejected', async () => {
+  await runTest(32, 'Payout request exceeding available balance rejected', async () => {
     // Request amount greater than remaining available balance
     const res = await apiCall('/api/provider/payouts', {
       method: 'POST',
@@ -1042,10 +1172,10 @@ async function runPhase5Tests() {
   });
 
   // ==========================================
-  // SECURITY & AUTHORIZATION TESTS (31 - 34)
+  // SECURITY & AUTHORIZATION TESTS (33 - 36)
   // ==========================================
 
-  await runTest(31, 'Customer cannot access another customer payment record', async () => {
+  await runTest(33, 'Customer cannot access another customer payment record', async () => {
     const res = await apiCall(`/api/payments/${mainPayment!.id}`, {
       method: 'GET',
       cookie: cust2Cookie,
@@ -1054,7 +1184,7 @@ async function runPhase5Tests() {
     assert(res.status === 403, `Expected status 403 Forbidden, got ${res.status}`);
   });
 
-  await runTest(32, 'Provider financial ledger summary isolated between providers', async () => {
+  await runTest(34, 'Provider financial ledger summary isolated between providers', async () => {
     const p1Summary = await apiCall('/api/provider/earnings/summary', {
       method: 'GET',
       cookie: prov1Cookie,
@@ -1068,7 +1198,7 @@ async function runPhase5Tests() {
     assert(Number(p2Summary.data?.totalGrossEarnings ?? p2Summary.data?.data?.totalGrossEarnings ?? 0) === 0, 'Provider 2 summary is strictly 0');
   });
 
-  await runTest(33, 'Payment gateway secrets and tokens absent from all API responses', async () => {
+  await runTest(35, 'Payment gateway secrets and tokens absent from all API responses', async () => {
     const res = await apiCall(`/api/payments/${mainPayment!.id}`, {
       method: 'GET',
       cookie: cust1Cookie,
@@ -1080,7 +1210,7 @@ async function runPhase5Tests() {
     assert(!bodyStr.includes('passwordHash'), 'Must not expose passwordHash');
   });
 
-  await runTest(34, 'Card credentials and CVV never stored or returned', async () => {
+  await runTest(36, 'Card credentials and CVV never stored or returned', async () => {
     const payment = await prisma.payment.findUnique({ where: { id: mainPayment!.id } });
     const paymentKeys = Object.keys(payment || {});
     assert(!paymentKeys.includes('cardNumber'), 'Cannot store cardNumber');
@@ -1089,10 +1219,10 @@ async function runPhase5Tests() {
   });
 
   // ==========================================
-  // DATABASE INTEGRITY TESTS (35 - 38)
+  // DATABASE INTEGRITY TESTS (37 - 40)
   // ==========================================
 
-  await runTest(35, 'Prisma database migrations applied and verified', async () => {
+  await runTest(37, 'Prisma database migrations applied and verified', async () => {
     // Check tables exist by executing count queries
     const paymentCount = await prisma.payment.count();
     const invoiceCount = await prisma.invoice.count();
@@ -1107,7 +1237,7 @@ async function runPhase5Tests() {
     assert(payoutCount >= 1, 'Payouts table active');
   });
 
-  await runTest(36, 'Foreign key financial relations valid and intact', async () => {
+  await runTest(38, 'Foreign key financial relations valid and intact', async () => {
     const invoice = await prisma.invoice.findFirst({
       where: { bookingId: mainBooking!.id },
       include: { booking: true, payment: true, customer: true, providerProfile: true },
@@ -1119,7 +1249,7 @@ async function runPhase5Tests() {
     assert(Boolean(invoice?.providerProfile), 'Invoice relation to provider profile intact');
   });
 
-  await runTest(37, 'Unique constraints on idempotencyKey and earnings work', async () => {
+  await runTest(39, 'Unique constraints on idempotencyKey and earnings work', async () => {
     let duplicateRejected = false;
     try {
       // Attempt to insert duplicate idempotencyKey
@@ -1143,7 +1273,7 @@ async function runPhase5Tests() {
     assert(duplicateRejected, 'Database unique constraint must reject duplicate idempotencyKey');
   });
 
-  await runTest(38, 'PostgreSQL persistence verified across transactions', async () => {
+  await runTest(40, 'PostgreSQL persistence verified across transactions', async () => {
     const payments = await prisma.payment.findMany({
       where: { customerId: customer1User.id },
     });
@@ -1167,7 +1297,7 @@ async function runPhase5Tests() {
       .forEach((r) => console.error(`  - Test ${r.num}: ${r.name} -> ${r.error}`));
     process.exit(1);
   } else {
-    console.log('\nALL 38 PHASE 5 TESTS PASSED SUCCESSFULLY!');
+    console.log(`\nALL ${results.length} PHASE 5 TESTS PASSED SUCCESSFULLY!`);
   }
 }
 
