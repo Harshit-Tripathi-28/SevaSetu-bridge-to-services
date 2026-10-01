@@ -67,6 +67,8 @@ model User {
   providerProfile ServiceProviderProfile?
   serviceRequests ServiceRequest[]
   customerBookings Booking[]
+  payments        Payment[]
+  invoices        Invoice[]
 
   @@index([email])
   @@index([role])
@@ -158,6 +160,10 @@ model ServiceProviderProfile {
   availabilityOverrides ProviderAvailabilityOverride[]
   serviceRequests       ServiceRequest[]
   bookings              Booking[]
+  payments              Payment[]
+  invoices              Invoice[]
+  earnings              ProviderEarning[]
+  payouts               ProviderPayout[]
 
   @@index([userId])
   @@index([onboardingStatus])
@@ -336,6 +342,10 @@ model Booking {
   updatedAt             DateTime               @updatedAt
 
   statusHistory         BookingStatusHistory[]
+  payments              Payment[]
+  invoices              Invoice[]
+  refunds               Refund[]
+  earnings              ProviderEarning[]
 
   @@index([customerId])
   @@index([providerProfileId])
@@ -361,4 +371,242 @@ model BookingStatusHistory {
   @@index([bookingId])
   @@index([createdAt])
 }
+
+// ==========================================
+// Phase 5: Real Payments, Invoices, Refunds & Provider Earnings
+// ==========================================
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  PROCESSING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  REFUND_PENDING
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum EarningStatus {
+  PENDING
+  AVAILABLE
+  DISBURSED
+  CANCELLED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+model Payment {
+  id                    String                 @id @default(uuid())
+  referenceCode         String                 @unique // e.g. "PAY-20261001-XXXX"
+  bookingId             String
+  booking               Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  customerId            String
+  customer              User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  providerProfileId     String
+  providerProfile       ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+
+  gatewayProvider       String                 @default("RAZORPAY")
+  gatewayOrderId        String?                @unique
+  gatewayPaymentId      String?                @unique
+  idempotencyKey        String?                @unique
+
+  // Amounts stored in integer minor units (paise for INR)
+  amount                Int                    // total payable in paise
+  baseAmount            Int                    // service base amount in paise
+  taxAmount             Int                    @default(0) // statutory tax in paise
+  platformFee           Int                    @default(0) // platform fee in paise
+  discountAmount        Int                    @default(0) // discount in paise
+  currency              String                 @default("INR")
+
+  status                PaymentStatus          @default(CREATED)
+  paymentMethod         String?                // "UPI", "CARD", "NETBANKING", "WALLET"
+
+  failureCode           String?
+  failureMessage        String?
+  paidAt                DateTime?
+
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  statusHistory         PaymentStatusHistory[]
+  invoices              Invoice[]
+  refunds               Refund[]
+  earnings              ProviderEarning[]
+
+  @@index([bookingId])
+  @@index([customerId])
+  @@index([providerProfileId])
+  @@index([status])
+  @@index([gatewayOrderId])
+  @@index([createdAt])
+}
+
+model PaymentStatusHistory {
+  id             String         @id @default(uuid())
+  paymentId      String
+  payment        Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  previousStatus PaymentStatus?
+  newStatus      PaymentStatus
+  actorType      BookingActorType
+  actorUserId    String?
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+
+  @@index([paymentId])
+  @@index([createdAt])
+}
+
+model Invoice {
+  id                   String                 @id @default(uuid())
+  invoiceNumber        String                 @unique // e.g. "INV-202610-00001"
+  bookingId            String
+  booking              Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  paymentId            String?
+  payment              Payment?               @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  customerId           String
+  customer             User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  providerProfileId    String
+  providerProfile      ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+
+  serviceTitleSnapshot String
+  serviceDate          DateTime               @db.Date
+  customerSnapshot     Json                   // { fullName, email, phone, billingAddress }
+  providerSnapshot     Json                   // { businessName, displayName, phone, email, taxRegistration }
+
+  // Financial amounts in minor units (paise)
+  subtotal             Int
+  tax                  Int                    @default(0)
+  platformFee          Int                    @default(0)
+  discount             Int                    @default(0)
+  total                Int
+  currency             String                 @default("INR")
+
+  paymentStatus        PaymentStatus          @default(PAID)
+  paymentMethodMasked  String?
+  issuedAt             DateTime               @default(now())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  lineItems            InvoiceLineItem[]
+
+  @@index([bookingId])
+  @@index([customerId])
+  @@index([providerProfileId])
+  @@index([paymentId])
+  @@index([issuedAt])
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float    @default(1.0)
+  unitPrice   Int      // in paise
+  total       Int      // in paise
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+model Refund {
+  id                String           @id @default(uuid())
+  refundReference   String           @unique // e.g. "RFND-20261001-XXXX"
+  paymentId         String
+  payment           Payment          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  bookingId         String
+  booking           Booking          @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  gatewayRefundId   String?          @unique
+
+  amount            Int              // in paise
+  currency          String           @default("INR")
+  status            RefundStatus     @default(PENDING)
+  reason            String
+  initiatedBy       BookingActorType @default(CUSTOMER)
+  initiatedByUserId String?
+  processedAt       DateTime?
+
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([paymentId])
+  @@index([bookingId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ProviderEarning {
+  id                String                 @id @default(uuid())
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+  bookingId         String
+  booking           Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  paymentId         String?
+  payment           Payment?               @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  // Amounts in minor units (paise)
+  grossAmount       Int
+  platformFee       Int                    @default(0)
+  taxDeduction      Int                    @default(0)
+  netEarning        Int
+  currency          String                 @default("INR")
+
+  status            EarningStatus          @default(AVAILABLE)
+  availableAt       DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([bookingId, providerProfileId]) // DOUBLE-CREDIT PROTECTION
+  @@index([providerProfileId])
+  @@index([bookingId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ProviderPayout {
+  id                  String                 @id @default(uuid())
+  payoutReference     String                 @unique // e.g. "PO-202610-XXXX"
+  providerProfileId   String
+  providerProfile     ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+
+  amount              Int                    // in paise
+  currency            String                 @default("INR")
+  status              PayoutStatus           @default(PENDING)
+  bankDetailsSnapshot Json?
+  failureReason       String?
+  requestedAt         DateTime               @default(now())
+  processedAt         DateTime?
+
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([providerProfileId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model InvoiceSequence {
+  id           String   @id // e.g. "INV_SEQUENCE_202610"
+  currentValue Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
 

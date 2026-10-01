@@ -1,7 +1,8 @@
 import { getPrismaClient } from '../config/database.js';
 import { Prisma, type BookingStatus } from '@prisma/client';
 import { BookingTransitionService } from './booking-transition.service.js';
-
+import { EarningService } from './earning.service.js';
+import { PaymentService } from './payment.service.js';
 import { AvailabilityService, timeToMinutes, validateTimeFormat } from './availability.service.js';
 import type {
   CreateServiceRequestInput,
@@ -660,6 +661,16 @@ export class BookingService {
           reason: notes?.trim() || `Provider transitioned job to ${nextStatus}.`,
         },
       });
+
+      // If job completed, check if payment is already settled and recognize provider earning
+      if (nextStatus === 'COMPLETED') {
+        const paidPayment = await tx.payment.findFirst({
+          where: { bookingId: booking.id, status: 'PAID' },
+        });
+        if (paidPayment) {
+          await EarningService.recognizeEarningForBooking(tx, booking, paidPayment);
+        }
+      }
     });
 
     return (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
@@ -732,6 +743,13 @@ export class BookingService {
         data: { status: 'CANCELLED' },
       });
     });
+
+    // Process cancellation refund according to policy if paid
+    try {
+      await PaymentService.processCancellationRefund(bookingId, userId, actorType, reason.trim());
+    } catch (refundErr) {
+      console.error(`[CancellationRefund] Error processing refund for booking ${bookingId}:`, refundErr);
+    }
 
     return (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
   }

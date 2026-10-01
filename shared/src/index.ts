@@ -781,4 +781,275 @@ export interface BookingListResponse {
   totalPages: number;
 }
 
+// ==========================================
+// Phase 5: Real Payments, Invoices, Refunds & Provider Earnings
+// ==========================================
+
+export type PaymentStatus =
+  | 'CREATED'
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'AUTHORIZED'
+  | 'PAID'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'REFUND_PENDING'
+  | 'PARTIALLY_REFUNDED'
+  | 'REFUNDED';
+
+export type RefundStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export type EarningStatus =
+  | 'PENDING'
+  | 'AVAILABLE'
+  | 'DISBURSED'
+  | 'CANCELLED';
+
+export type PayoutStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'PAID'
+  | 'FAILED'
+  | 'CANCELLED';
+
+/**
+ * Monetary conversion & formatting utilities.
+ * Ensures consistent minor-unit (paise) integer math across all layers.
+ */
+export function rupeesToPaise(rupees: number): number {
+  return Math.round(rupees * 100);
+}
+
+export function paiseToRupees(paise: number): number {
+  return paise / 100;
+}
+
+export function formatINR(paise: number): string {
+  return `₹${(paise / 100).toFixed(2)}`;
+}
+
+export const ALLOWED_PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
+  CREATED: ['PENDING', 'CANCELLED', 'FAILED'],
+  PENDING: ['PROCESSING', 'AUTHORIZED', 'PAID', 'CANCELLED', 'FAILED'],
+  PROCESSING: ['AUTHORIZED', 'PAID', 'FAILED'],
+  AUTHORIZED: ['PAID', 'FAILED', 'CANCELLED'],
+  PAID: ['REFUND_PENDING', 'PARTIALLY_REFUNDED', 'REFUNDED'],
+  REFUND_PENDING: ['PARTIALLY_REFUNDED', 'REFUNDED', 'PAID'],
+  PARTIALLY_REFUNDED: ['REFUND_PENDING', 'REFUNDED'],
+  REFUNDED: [],
+  FAILED: ['PENDING'],
+  CANCELLED: [],
+};
+
+export function canTransitionPaymentStatus(current: PaymentStatus, target: PaymentStatus): boolean {
+  if (current === target) return true;
+  const allowed = ALLOWED_PAYMENT_TRANSITIONS[current] || [];
+  return allowed.includes(target);
+}
+
+export const ALLOWED_REFUND_TRANSITIONS: Record<RefundStatus, RefundStatus[]> = {
+  PENDING: ['PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED'],
+  PROCESSING: ['COMPLETED', 'FAILED'],
+  COMPLETED: [],
+  FAILED: ['PENDING'],
+  CANCELLED: [],
+};
+
+export function canTransitionRefundStatus(current: RefundStatus, target: RefundStatus): boolean {
+  if (current === target) return true;
+  const allowed = ALLOWED_REFUND_TRANSITIONS[current] || [];
+  return allowed.includes(target);
+}
+
+export interface PaymentRecord {
+  id: string;
+  referenceCode: string;
+  bookingId: string;
+  customerId: string;
+  providerProfileId: string;
+  gatewayProvider: string;
+  gatewayOrderId: string | null;
+  gatewayPaymentId: string | null;
+  idempotencyKey?: string | null;
+  amount: number; // in paise
+  baseAmount: number; // in paise
+  taxAmount: number; // in paise
+  platformFee: number; // in paise
+  discountAmount: number; // in paise
+  currency: string;
+  status: PaymentStatus;
+  paymentMethod: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  booking?: BookingRecord;
+  invoices?: PaymentInvoiceSummary[];
+  refunds?: PaymentRefundSummary[];
+}
+
+export interface PaymentInvoiceSummary {
+  id: string;
+  invoiceNumber: string;
+  bookingId: string;
+  total: number;
+  paymentStatus: PaymentStatus;
+  issuedAt: string;
+}
+
+export interface PaymentRefundSummary {
+  id: string;
+  refundReference: string;
+  amount: number;
+  status: RefundStatus;
+  reason: string;
+  createdAt: string;
+}
+
+export interface InvoiceLineItemRecord {
+  id: string;
+  invoiceId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number; // in paise
+  total: number; // in paise
+}
+
+export interface InvoiceRecord {
+  id: string;
+  invoiceNumber: string;
+  bookingId: string;
+  paymentId?: string | null;
+  customerId: string;
+  providerProfileId: string;
+  serviceTitleSnapshot: string;
+  serviceDate: string;
+  customerSnapshot: {
+    fullName: string | null;
+    email: string;
+    phone: string | null;
+    billingAddress?: BookingAddressSnapshot;
+  };
+  providerSnapshot: {
+    businessName: string | null;
+    displayName?: string;
+    phone?: string | null;
+    email?: string;
+    taxRegistration?: string | null;
+  };
+  subtotal: number; // in paise
+  tax: number; // in paise
+  platformFee: number; // in paise
+  discount: number; // in paise
+  total: number; // in paise
+  currency: string;
+  paymentStatus: PaymentStatus;
+  paymentMethodMasked?: string | null;
+  issuedAt: string;
+  createdAt: string;
+  lineItems?: InvoiceLineItemRecord[];
+  booking?: BookingRecord;
+}
+
+export interface RefundRecord {
+  id: string;
+  refundReference: string;
+  paymentId: string;
+  bookingId: string;
+  gatewayRefundId?: string | null;
+  amount: number; // in paise
+  currency: string;
+  status: RefundStatus;
+  reason: string;
+  initiatedBy: BookingActorType;
+  processedAt?: string | null;
+  createdAt: string;
+}
+
+export interface ProviderEarningRecord {
+  id: string;
+  providerProfileId: string;
+  bookingId: string;
+  paymentId?: string | null;
+  grossAmount: number; // in paise
+  platformFee: number; // in paise
+  taxDeduction: number; // in paise
+  netEarning: number; // in paise
+  currency: string;
+  status: EarningStatus;
+  availableAt?: string | null;
+  createdAt: string;
+  booking?: BookingRecord;
+}
+
+export interface ProviderPayoutRecord {
+  id: string;
+  payoutReference: string;
+  providerProfileId: string;
+  amount: number; // in paise
+  currency: string;
+  status: PayoutStatus;
+  bankDetailsSnapshot?: Record<string, unknown> | null;
+  failureReason?: string | null;
+  requestedAt: string;
+  processedAt?: string | null;
+  createdAt: string;
+}
+
+export interface ProviderFinancialSummary {
+  totalGrossEarnings: number; // in paise
+  totalPlatformFees: number; // in paise
+  netEarnings: number; // in paise
+  availableBalance: number; // in paise
+  pendingBalance: number; // in paise
+  disbursedTotal: number; // in paise
+  completedJobsCount: number;
+}
+
+export interface CreatePaymentOrderInput {
+  bookingId: string;
+  idempotencyKey?: string;
+}
+
+export interface CreatePaymentOrderResponse {
+  payment: PaymentRecord;
+  gatewayOrder?: {
+    orderId: string;
+    amount: number;
+    currency: string;
+    keyId?: string;
+  };
+}
+
+export interface VerifyPaymentInput {
+  bookingId: string;
+  gatewayOrderId: string;
+  gatewayPaymentId: string;
+  gatewaySignature: string;
+  paymentMethod?: string;
+}
+
+export interface BookingPaymentBreakdown {
+  bookingId: string;
+  referenceCode: string;
+  serviceTitle: string;
+  pricingModel: CatalogPricingModel;
+  baseAmountPaise: number;
+  platformFeePaise: number;
+  taxPaise: number;
+  discountPaise: number;
+  totalPaise: number;
+  currency: string;
+  isPayable: boolean;
+  unpayableReason?: string;
+  existingPayment?: PaymentRecord | null;
+}
+
+
 

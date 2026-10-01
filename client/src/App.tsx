@@ -302,6 +302,8 @@ export const App: React.FC = () => {
             <Route path="services" element={<ProviderServicesPage />} />
             <Route path="profile" element={<ProviderProfilePage />} />
             <Route path="earnings" element={<ProviderEarningsPage />} />
+            <Route path="invoices/:invoiceId" element={<InvoicePage userRole="provider" />} />
+            <Route path="invoice/:invoiceId" element={<InvoicePage userRole="provider" />} />
             <Route path="reviews" element={<ProviderReviewsPage />} />
             <Route path="messages" element={<MessagesPage userRole="provider" />} />
             <Route path="messages/:conversationId" element={<MessagesPage userRole="provider" />} />

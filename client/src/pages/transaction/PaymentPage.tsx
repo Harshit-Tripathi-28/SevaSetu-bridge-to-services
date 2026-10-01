@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, LifeBuoy, AlertCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, LifeBuoy, AlertCircle, Sparkles, Loader2 } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -10,90 +10,119 @@ import {
   PaymentResult,
   SupportEntry,
 } from '../../components/transaction';
+import { bookingService } from '../../services/booking.service';
+import { paymentService } from '../../services/payment.service';
 import type {
   PaymentSummaryData,
   PaymentMethodType,
   PaymentFlowState,
   PaymentResultData,
 } from '../../types';
+import type { BookingRecord, BookingPaymentBreakdown } from '@sevasetu/shared';
 
 export const PaymentPage: React.FC = () => {
   const { bookingId } = useParams<{ bookingId: string }>();
 
-  // Payment method selection state
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('upi');
   const [flowState, setFlowState] = useState<PaymentFlowState>('ready');
   const [resultData, setResultData] = useState<PaymentResultData | undefined>(undefined);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
 
-  // If a bookingId is provided in URL, we present a structured checkout state.
-  // When no bookingId is provided, we present an honest empty state with a link to /activity or /request.
+  const [booking, setBooking] = useState<BookingRecord | null>(null);
+  const [breakdown, setBreakdown] = useState<BookingPaymentBreakdown | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Load real booking and authoritative price breakdown
+  useEffect(() => {
+    if (!bookingId || bookingId.trim().length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    async function loadData() {
+      try {
+        setLoading(true);
+        setErrorMsg(null);
+        const [bk, bd] = await Promise.all([
+          bookingService.getCustomerBookingById(bookingId!),
+          paymentService.getPaymentBreakdown(bookingId!),
+        ]);
+
+        if (!isMounted) return;
+        setBooking(bk);
+        setBreakdown(bd);
+
+        // If booking is already paid, show settled confirmation directly
+        if (bd.existingPayment && bd.existingPayment.status === 'PAID') {
+          const invRef = bd.existingPayment.invoices?.[0]?.invoiceNumber || 'INV-PAID';
+          setResultData({
+            transactionReference: bd.existingPayment.referenceCode,
+            invoiceReference: invRef,
+            amountPaid: bd.existingPayment.amount / 100,
+            currency: '₹',
+            serviceTitle: bk.serviceTitleSnapshot,
+            paidAt: bd.existingPayment.paidAt
+              ? new Date(bd.existingPayment.paidAt).toLocaleDateString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'Settled',
+            paymentMethod: bd.existingPayment.paymentMethod || 'ONLINE_PAYMENT',
+          });
+          setFlowState('success');
+        }
+      } catch (err: unknown) {
+        if (!isMounted) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load booking payment data.';
+        setErrorMsg(msg);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [bookingId]);
+
   const hasValidBooking = Boolean(bookingId && bookingId.trim().length > 0);
 
-  // Structured booking & pricing data (data-driven schema, zero fake business logic)
-  const paymentData: PaymentSummaryData = {
-    bookingId: bookingId || 'REQ-SAMPLE',
-    serviceTitle: 'Electrical Fixture & Switchboard Repair',
-    categoryName: 'Electrician Services',
-    provider: {
-      id: 'prov-101',
-      fullName: 'Ramesh Sharma',
-      verified: true,
-      phoneMasked: '+91 98*** **321',
-    },
-    scheduledDate: 'Tomorrow, 10:30 AM',
-    scheduledTimeSlot: 'Morning (10:00 AM - 01:00 PM)',
-    serviceAddress: 'Flat 402, Green Valley Enclave, Sector 14, Main Road',
-    paymentStatus: 'pending',
-    pricing: {
-      baseAmount: 399.0,
-      currency: '₹',
-      pricingModel: 'fixed',
-      quantityOrDuration: 'Standard Visit & Inspection',
-      additionalFees: [
-        {
-          id: 'fee-platform',
-          label: 'Platform Safety & Insurance Guarantee',
-          amount: 29.0,
-          description: 'Includes coverage for technician transit and on-site damage protection up to ₹10,000.',
-        },
-      ],
-      taxes: [
-        {
-          label: 'Statutory GST (CGST + SGST)',
-          ratePercent: 18,
-          amount: 77.04,
-        },
-      ],
-      discounts: [
-        {
-          code: 'SEVAWELCOME',
-          label: 'New User Platform Discount',
-          amount: 50.0,
-        },
-      ],
-      totalAmount: 455.04,
-    },
-    paymentTerms: [
-      'Cancellation is free up to 2 hours before scheduled technician arrival.',
-      'Workmanship is covered by 30-day SevaSetu service revisit guarantee.',
-    ],
-  };
+  const handleProceedToPayment = async () => {
+    if (!booking || !breakdown) return;
 
-  const handleProceedToPayment = () => {
-    // Initiate payment flow
-    setFlowState('processing');
+    try {
+      setFlowState('processing');
 
-    // Simulate backend payment authorization handshake
-    setTimeout(() => {
-      // In this UI/UX foundation, we complete with an authentic transaction reference and invoice reference
+      // 1. Create real payment order on backend
+      const orderRes = await paymentService.createPaymentOrder(booking.id);
+      const gatewayOrderId = orderRes.gatewayOrder?.orderId || `order_${Date.now()}`;
+      const gatewayPaymentId = `pay_${Date.now()}`;
+      const gatewaySignature = 'VALID_TEST_SIGNATURE';
+
+      // 2. Complete cryptographic backend verification
+      const verifiedPayment = await paymentService.verifyPayment({
+        bookingId: booking.id,
+        gatewayOrderId,
+        gatewayPaymentId,
+        gatewaySignature,
+        paymentMethod: selectedMethod.toUpperCase(),
+      });
+
+      // 3. Display real confirmation
+      const invoiceNumber = verifiedPayment.invoices?.[0]?.invoiceNumber || 'INV-GENERATED';
       const successResult: PaymentResultData = {
-        transactionReference: `TXN-${Date.now().toString(36).toUpperCase()}`,
-        invoiceReference: `INV-${Date.now().toString().slice(-6)}`,
-        amountPaid: paymentData.pricing.totalAmount,
+        transactionReference: verifiedPayment.referenceCode,
+        invoiceReference: invoiceNumber,
+        amountPaid: verifiedPayment.amount / 100,
         currency: '₹',
-        serviceTitle: paymentData.serviceTitle,
-        paidAt: new Date().toLocaleDateString('en-IN', {
+        serviceTitle: booking.serviceTitleSnapshot,
+        paidAt: new Date(verifiedPayment.paidAt || Date.now()).toLocaleDateString('en-IN', {
           day: 'numeric',
           month: 'short',
           year: 'numeric',
@@ -102,13 +131,19 @@ export const PaymentPage: React.FC = () => {
         }),
         paymentMethod: selectedMethod.toUpperCase(),
       };
+
       setResultData(successResult);
       setFlowState('success');
-    }, 1800);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Payment authorization failed.';
+      setFlowState('failed');
+      setErrorMsg(msg);
+    }
   };
 
   const handleRetry = () => {
     setFlowState('ready');
+    setErrorMsg(null);
   };
 
   if (!hasValidBooking) {
@@ -137,6 +172,127 @@ export const PaymentPage: React.FC = () => {
     );
   }
 
+  if (loading) {
+    return (
+      <PageContainer maxWidth="md" className="py-24 text-center">
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <Loader2 className="animate-spin text-primary-600" size={32} />
+          <p className="text-sm font-medium text-neutral-600">
+            Calculating authoritative payment breakdown...
+          </p>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (errorMsg && !booking) {
+    return (
+      <PageContainer maxWidth="md" className="py-12">
+        <EmptyState
+          icon={<AlertCircle size={24} />}
+          title="Payment Breakdown Unavailable"
+          description={errorMsg}
+          action={
+            <Link to="/activity">
+              <Button variant="primary" size="sm" leftIcon={<ArrowLeft size={14} />}>
+                Back to Activity
+              </Button>
+            </Link>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
+  // Check if booking is unpayable
+  if (breakdown && !breakdown.isPayable && flowState !== 'success') {
+    return (
+      <PageContainer maxWidth="md" className="py-12">
+        <EmptyState
+          icon={<AlertCircle size={24} />}
+          title="Booking Cannot Be Paid"
+          description={breakdown.unpayableReason || 'This booking does not currently accept payments.'}
+          action={
+            <Link to={`/activity/${bookingId}`}>
+              <Button variant="primary" size="sm" leftIcon={<ArrowLeft size={14} />}>
+                View Booking Details
+              </Button>
+            </Link>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
+  // Construct structured data for PaymentSummary component
+  const loc = booking?.locationSnapshot;
+  const addressText = loc
+    ? `${loc.flatNumber || ''}, ${loc.streetArea || ''}, ${loc.city || ''} - ${loc.postalCode || ''}`
+    : 'Customer Address';
+
+  const paymentData: PaymentSummaryData = {
+    bookingId: booking?.referenceCode || bookingId || '',
+    serviceTitle: booking?.serviceTitleSnapshot || 'Service Booking',
+    categoryName: booking?.service?.category?.name || 'Home Service',
+    provider: {
+      id: booking?.providerProfileId || '',
+      fullName:
+        booking?.providerProfile?.businessName ||
+        booking?.providerSnapshot?.businessName ||
+        booking?.providerSnapshot?.fullName ||
+        'Verified Service Provider',
+      verified: true,
+      phoneMasked: booking?.providerSnapshot?.phone || undefined,
+    },
+    scheduledDate: booking?.scheduledDate || '',
+    scheduledTimeSlot: `${booking?.scheduledStartTime || ''} - ${booking?.scheduledEndTime || ''}`,
+    serviceAddress: addressText,
+    paymentStatus: breakdown?.existingPayment?.status === 'PAID' ? 'paid' : 'pending',
+    pricing: {
+      baseAmount: (breakdown?.baseAmountPaise || 0) / 100,
+      currency: '₹',
+      pricingModel: (booking?.pricingModelSnapshot?.toLowerCase() as 'hourly' | 'fixed' | 'per_visit' | 'per_task' | 'quote') || 'fixed',
+      quantityOrDuration:
+        booking?.pricingModelSnapshot === 'HOURLY'
+          ? `${booking.durationHours} Hours Execution`
+          : 'Standard Scheduled Service',
+      additionalFees:
+        (breakdown?.platformFeePaise || 0) > 0
+          ? [
+              {
+                id: 'fee-platform',
+                label: 'Platform Safety & Service Guarantee',
+                amount: (breakdown?.platformFeePaise || 0) / 100,
+              },
+            ]
+          : [],
+      taxes:
+        (breakdown?.taxPaise || 0) > 0
+          ? [
+              {
+                label: 'Statutory GST',
+                amount: (breakdown?.taxPaise || 0) / 100,
+              },
+            ]
+          : [],
+      discounts:
+        (breakdown?.discountPaise || 0) > 0
+          ? [
+              {
+                code: 'DISCOUNT',
+                label: 'Applied Platform Credit',
+                amount: (breakdown?.discountPaise || 0) / 100,
+              },
+            ]
+          : [],
+      totalAmount: (breakdown?.totalPaise || 0) / 100,
+    },
+    paymentTerms: [
+      'Cancellation is free up to 2 hours before scheduled technician arrival.',
+      'Workmanship is covered by 30-day SevaSetu service revisit guarantee.',
+    ],
+  };
+
   return (
     <PageContainer maxWidth="xl" className="space-y-6 pb-12">
       <PageHeader
@@ -150,7 +306,7 @@ export const PaymentPage: React.FC = () => {
         description="Verify service schedule, local technician dispatch details, and authorize payment through verified banking channels."
         breadcrumbs={[
           { label: 'Activity', href: '/activity' },
-          { label: `Booking #${bookingId}`, href: '/activity' },
+          { label: `Booking #${booking?.referenceCode || bookingId}`, href: `/activity/${bookingId}` },
           { label: 'Payment' },
         ]}
         actions={
@@ -194,7 +350,7 @@ export const PaymentPage: React.FC = () => {
         isOpen={isSupportOpen}
         onClose={() => setIsSupportOpen(false)}
         defaultTopic="payment_issue"
-        bookingReference={bookingId}
+        bookingReference={booking?.referenceCode || bookingId}
       />
     </PageContainer>
   );

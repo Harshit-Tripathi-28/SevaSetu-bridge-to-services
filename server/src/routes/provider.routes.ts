@@ -3,8 +3,8 @@ import { ProviderController } from '../controllers/provider.controller.js';
 import { AvailabilityController } from '../controllers/availability.controller.js';
 import { SearchController } from '../controllers/search.controller.js';
 import { BookingController } from '../controllers/booking.controller.js';
+import { PaymentController } from '../controllers/payment.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
-
 
 const router = Router();
 
@@ -57,6 +57,15 @@ router.post('/provider/bookings/:id/decline', providerAuth, BookingController.de
 router.post('/provider/bookings/:id/status', providerAuth, BookingController.updateExecutionStatus);
 router.post('/provider/bookings/:id/cancel', providerAuth, BookingController.cancelProviderBooking);
 
+// Phase 5: Provider Financials, Invoices, Earnings & Payouts
+router.get('/provider/earnings/summary', providerAuth, PaymentController.getProviderEarningsSummary);
+router.get('/provider/earnings', providerAuth, PaymentController.getProviderEarnings);
+router.get('/provider/payouts', providerAuth, PaymentController.getProviderPayouts);
+router.post('/provider/payouts', providerAuth, PaymentController.requestPayout);
+router.get('/provider/invoices', providerAuth, PaymentController.getProviderInvoices);
+router.get('/provider/invoices/:id', providerAuth, PaymentController.getInvoiceById);
+
 export default router;
+
 
 

@@ -21,7 +21,13 @@ export function createApp(): express.Application {
     })
   );
   app.use(cookieParser());
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        (req as unknown as { rawBody?: Buffer }).rawBody = buf;
+      },
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
 
   if (config.nodeEnv !== 'test') {

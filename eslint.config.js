@@ -37,6 +37,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['server/src/tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
     files: ['client/**/*.{ts,tsx}'],
     languageOptions: {
       globals: {

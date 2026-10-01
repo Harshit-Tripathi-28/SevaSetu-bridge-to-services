@@ -26,6 +26,12 @@ export interface ServerConfig {
   };
   jwtExpiresIn: string;
   saltRounds: number;
+  paymentGateway: {
+    provider: string;
+    razorpayKeyId?: string;
+    razorpayKeySecret?: string;
+    razorpayWebhookSecret?: string;
+  };
 }
 
 const nodeEnv = (process.env.NODE_ENV as ServerConfig['nodeEnv']) || 'development';
@@ -46,6 +52,12 @@ export const config: ServerConfig = {
   },
   jwtExpiresIn: '7d',
   saltRounds: 10,
+  paymentGateway: {
+    provider: process.env.PAYMENT_GATEWAY_PROVIDER || 'RAZORPAY',
+    razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+    razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,
+    razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+  },
 };
 
 export function validateConfig(): void {

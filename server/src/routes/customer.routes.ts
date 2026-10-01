@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { CustomerController } from '../controllers/customer.controller.js';
 import { BookingController } from '../controllers/booking.controller.js';
+import { PaymentController } from '../controllers/payment.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -26,5 +27,11 @@ router.get('/customer/bookings/:id', customerAuth, BookingController.getCustomer
 router.post('/customer/bookings/:id/cancel', customerAuth, BookingController.cancelCustomerBooking);
 router.post('/customer/bookings/:id/reschedule', customerAuth, BookingController.rescheduleCustomerBooking);
 
+// Phase 5: Customer Payments & Invoices
+router.get('/customer/payments', customerAuth, PaymentController.getCustomerPayments);
+router.get('/customer/invoices', customerAuth, PaymentController.getCustomerInvoices);
+router.get('/customer/invoices/:id', customerAuth, PaymentController.getInvoiceById);
+
 export default router;
+
 

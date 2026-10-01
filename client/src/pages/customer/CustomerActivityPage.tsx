@@ -13,6 +13,7 @@ import {
   SupportEntry,
 } from '../../components/transaction';
 import { bookingService } from '../../services/booking.service';
+import { paymentService } from '../../services/payment.service';
 import type {
   CustomerActivityItem,
   PaymentStatus,
@@ -65,7 +66,12 @@ export const CustomerActivityPage: React.FC = () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await bookingService.getCustomerBookings({ limit: 50 });
+      const [res, payments, invoices] = await Promise.all([
+        bookingService.getCustomerBookings({ limit: 50 }),
+        paymentService.getCustomerPayments().catch(() => []),
+        paymentService.getCustomerInvoices().catch(() => []),
+      ]);
+
       const mapped = (res.bookings || []).map((b: BookingRecord) => {
         const providerName =
           b.providerSnapshot?.businessName ||
@@ -78,6 +84,17 @@ export const CustomerActivityPage: React.FC = () => {
           ? `${b.locationSnapshot.flatNumber}, ${b.locationSnapshot.streetArea}, ${b.locationSnapshot.city}`
           : 'Service Location';
 
+        const paymentForBk = payments.find((p) => p.bookingId === b.id);
+        const invoiceForBk = invoices.find((inv) => inv.bookingId === b.id);
+        const paymentStatus =
+          paymentForBk?.status === 'PAID'
+            ? ('paid' as PaymentStatus)
+            : paymentForBk?.status === 'REFUNDED'
+            ? ('refunded' as PaymentStatus)
+            : b.status === 'CANCELLED'
+            ? undefined
+            : ('pending' as PaymentStatus);
+
         return {
           id: b.id,
           serviceTitle: b.serviceTitleSnapshot || b.service?.title || 'Home Service',
@@ -88,6 +105,8 @@ export const CustomerActivityPage: React.FC = () => {
           scheduledTime: `${b.scheduledStartTime} – ${b.scheduledEndTime}`,
           location: locationStr,
           pricePaid: b.priceSnapshot || undefined,
+          paymentStatus,
+          invoiceId: invoiceForBk?.invoiceNumber,
           canRebook: b.status === 'COMPLETED' || b.status === 'CANCELLED',
           createdAt: b.createdAt,
         };

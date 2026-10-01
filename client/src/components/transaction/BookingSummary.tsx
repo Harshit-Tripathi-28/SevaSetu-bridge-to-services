@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Calendar,
   Clock,
@@ -9,6 +10,7 @@ import {
   CalendarClock,
   XCircle,
   History,
+  CreditCard,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -140,6 +142,31 @@ export const BookingSummary: React.FC<BookingSummaryProps> = ({
           <div>
             <span className="font-semibold text-neutral-900 block">Service Address:</span>
             <span className="text-neutral-600 leading-relaxed">{locationStr}</span>
+          </div>
+        </div>
+
+        {/* Pricing & Financial Snapshot */}
+        <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span className="text-xs text-neutral-500 font-medium block">Authoritative Rate:</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-lg font-bold text-neutral-900 font-mono">
+                {booking.priceSnapshot !== null ? `₹${booking.priceSnapshot}` : 'Custom Quote'}
+              </span>
+              <span className="text-xs text-neutral-500 uppercase font-semibold">
+                ({booking.pricingModelSnapshot})
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {booking.status !== 'CANCELLED' && booking.status !== 'DECLINED' && (
+              <Link to={`/payment/${booking.id}`}>
+                <Button variant="primary" size="sm" leftIcon={<CreditCard size={13} />}>
+                  Payment / Checkout
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
