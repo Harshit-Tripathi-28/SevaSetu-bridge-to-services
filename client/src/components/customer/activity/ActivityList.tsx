@@ -16,6 +16,7 @@ export interface ActivityListProps {
   isLoading?: boolean;
   onRebook?: (item: CustomerActivityItem) => void;
   onCancelBooking?: (item: CustomerActivityItem) => void;
+  onReschedule?: (item: CustomerActivityItem) => void;
 }
 
 type FilterTab = 'all' | ActivityStatus;
@@ -25,6 +26,7 @@ export const ActivityList: React.FC<ActivityListProps> = ({
   isLoading = false,
   onRebook,
   onCancelBooking,
+  onReschedule,
 }) => {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
@@ -80,9 +82,11 @@ export const ActivityList: React.FC<ActivityListProps> = ({
               item={item}
               onRebook={onRebook}
               onCancelBooking={onCancelBooking}
+              onReschedule={onReschedule}
             />
           ))}
         </div>
+
       ) : (
         <EmptyState
           icon={<CalendarClock size={24} />}

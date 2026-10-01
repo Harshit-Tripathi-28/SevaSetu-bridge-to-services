@@ -9,6 +9,8 @@ export const RequestServicePage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const initialCategory = searchParams.get('category') || '';
   const initialProviderId = searchParams.get('providerId') || undefined;
+  const initialServiceId = searchParams.get('serviceId') || undefined;
+  const initialServiceSlug = searchParams.get('service') || undefined;
 
   return (
     <PageContainer maxWidth="lg" className="space-y-8 pb-12">
@@ -26,7 +28,10 @@ export const RequestServicePage: React.FC = () => {
       <ServiceRequestWizard
         initialCategory={initialCategory}
         initialProviderId={initialProviderId}
+        initialServiceId={initialServiceId}
+        initialServiceSlug={initialServiceSlug}
       />
+
 
       {/* Trust & Safety Assurance Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6 border-t border-neutral-200 text-xs text-neutral-600">

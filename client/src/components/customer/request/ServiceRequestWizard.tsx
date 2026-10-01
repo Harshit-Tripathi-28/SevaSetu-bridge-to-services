@@ -8,7 +8,10 @@ import { Step5Preferences } from './Step5Preferences';
 import { Step6ReviewConfirm } from './Step6ReviewConfirm';
 import { ConfirmationSuccessState } from './ConfirmationSuccessState';
 import { RequestSummary } from './SummaryComponents';
-import { CORE_SERVICE_CATEGORIES } from '../../../constants/categories';
+import { bookingService } from '../../../services/booking.service';
+import { catalogService } from '../../../services/catalog.service';
+import { providerService } from '../../../services/provider.service';
+import type { CreateServiceRequestInput } from '@sevasetu/shared';
 import type {
   ServiceRequestFormData,
   RequestFormErrors,
@@ -18,6 +21,8 @@ import type {
 export interface ServiceRequestWizardProps {
   initialCategory?: string;
   initialProviderId?: string;
+  initialServiceId?: string;
+  initialServiceSlug?: string;
 }
 
 const DEFAULT_FORM_DATA: ServiceRequestFormData = {
@@ -51,6 +56,8 @@ const DEFAULT_FORM_DATA: ServiceRequestFormData = {
 export const ServiceRequestWizard: React.FC<ServiceRequestWizardProps> = ({
   initialCategory = '',
   initialProviderId,
+  initialServiceId,
+  initialServiceSlug,
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [maxCompletedStep, setMaxCompletedStep] = useState<number>(1);
@@ -198,15 +205,108 @@ export const ServiceRequestWizard: React.FC<ServiceRequestWizardProps> = ({
   };
 
   // Final Confirmation Submit
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     if (!validateStep6()) return;
 
     setIsSubmitting(true);
+    setErrors({});
 
-    // Simulate structured request preparation
-    setTimeout(() => {
-      const categoryObj = CORE_SERVICE_CATEGORIES.find((c) => c.slug === formData.category);
-      const catName = categoryObj ? categoryObj.name : formData.category;
+    try {
+      // 1. Resolve Service ID
+      let serviceId = initialServiceId;
+      if (!serviceId) {
+        const catSlug = formData.category || initialCategory;
+        const services = await catalogService.getServices(catSlug ? { categorySlug: catSlug } : undefined);
+        if (services.length > 0) {
+          const matched = initialServiceSlug
+            ? services.find((s) => s.slug === initialServiceSlug)
+            : services[0];
+          serviceId = matched ? matched.id : services[0]?.id;
+        }
+      }
+
+      if (!serviceId) {
+        throw new Error('Unable to resolve service. Please select a valid category or service.');
+      }
+
+      // 2. Resolve Provider ID
+      let providerProfileId = formData.targetProviderId || initialProviderId;
+      if (!providerProfileId) {
+        // Find best matching active provider in area
+        const searchRes = await providerService.searchProviders({
+          serviceId,
+          postalCode: formData.address.pincode,
+          city: formData.address.city,
+          limit: 1,
+        });
+        if (searchRes.results.length > 0) {
+          providerProfileId = searchRes.results[0]?.id;
+        } else {
+          // If none in specific postal code, find any active provider offering this service
+          const fallbackSearch = await providerService.searchProviders({
+            serviceId,
+            limit: 1,
+          });
+          if (fallbackSearch.results.length > 0) {
+            providerProfileId = fallbackSearch.results[0]?.id;
+          }
+        }
+      }
+
+      if (!providerProfileId) {
+        throw new Error('No available service provider found for this request. Please select a provider from search.');
+      }
+
+      // 3. Map Time & Duration
+      const slotTimeMap: Record<string, string> = {
+        morning: '10:00',
+        afternoon: '14:00',
+        evening: '17:00',
+        urgent: '10:00',
+      };
+      const requestedStartTime = slotTimeMap[formData.timeSlot] || '10:00';
+
+      const durationMap: Record<string, number> = {
+        'under-1': 1.0,
+        '1-2': 2.0,
+        'half-day': 4.0,
+        'full-day': 8.0,
+        'unsure': 1.0,
+      };
+      const requestedDurationHours = durationMap[formData.duration] || 1.0;
+
+      // 4. Construct Payload
+      const payload: CreateServiceRequestInput = {
+        serviceId,
+        providerProfileId,
+        description: `${formData.serviceNeed} | Details: ${formData.descriptionOfWork}`,
+        requestedDate: formData.scheduledDate,
+        requestedStartTime,
+        requestedDurationHours,
+        preferences: {
+          timeSlot: formData.timeSlot,
+          additionalInstructions: formData.additionalInstructions,
+          accessInstructions: formData.accessInstructions,
+          hasPets: formData.hasPets,
+          parkingAvailable: formData.parkingAvailable,
+          bringTools: formData.bringTools,
+        },
+      };
+
+      if (formData.addressMode === 'saved' && formData.selectedSavedAddressId) {
+        payload.addressId = formData.selectedSavedAddressId;
+      } else {
+        payload.address = {
+          flatNumber: formData.address.flatNumber,
+          streetArea: formData.address.streetArea,
+          city: formData.address.city,
+          postalCode: formData.address.pincode,
+          landmark: formData.address.landmark,
+        };
+      }
+
+      // 5. Send Real API Request to Backend
+      const createdBooking = await bookingService.createServiceRequest(payload);
 
       const timeSlotLabels: Record<string, string> = {
         morning: 'Morning (09:00 AM – 12:00 PM)',
@@ -215,26 +315,27 @@ export const ServiceRequestWizard: React.FC<ServiceRequestWizardProps> = ({
         urgent: 'Immediate Dispatch',
       };
 
-      const dateCode = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const referenceId = `REQ-${dateCode}-${randomSuffix}`;
-
       const confirmation: RequestConfirmationData = {
-        referenceId,
-        categoryName: catName,
-        serviceType: formData.serviceType || 'Standard Service',
-        scheduledDate: formData.scheduledDate,
+        referenceId: createdBooking.referenceCode,
+        categoryName: formData.category,
+        serviceType: createdBooking.serviceTitleSnapshot,
+        scheduledDate: createdBooking.scheduledDate,
         timeSlotLabel: timeSlotLabels[formData.timeSlot] || formData.timeSlot,
-        locationSummary: `${formData.address.flatNumber}, ${formData.address.streetArea}, ${formData.address.city} (${formData.address.pincode})`,
-        createdAt: new Date().toISOString(),
+        locationSummary: `${createdBooking.locationSnapshot.flatNumber}, ${createdBooking.locationSnapshot.streetArea}, ${createdBooking.locationSnapshot.city} (${createdBooking.locationSnapshot.postalCode})`,
+        createdAt: createdBooking.createdAt,
       };
 
       setConfirmationData(confirmation);
-      setIsSubmitting(false);
       setCurrentStep(7); // Show confirmation
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 400);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to submit service request';
+      setErrors({ acceptedTerms: message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
 
   // Render Step 7: Confirmation State
   if (currentStep === 7 && confirmationData) {

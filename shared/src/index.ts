@@ -364,11 +364,18 @@ export interface AvailabilitySummary {
 }
 
 export type ServiceRequestStatus =
+  | 'SUBMITTED'
+  | 'PENDING_PROVIDER'
+  | 'ACCEPTED'
+  | 'DECLINED'
+  | 'CANCELLED'
+  | 'EXPIRED'
   | 'draft'
   | 'submitted'
   | 'matching'
   | 'matched'
   | 'cancelled';
+
 
 export interface ServiceRequestSummary {
   id: string;
@@ -576,4 +583,202 @@ export interface AvailabilityCheckResponse {
     breakEnd?: string | null;
   };
 }
+
+/**
+ * Functional Phase 4: Real Booking Lifecycle Contracts
+ */
+
+export type BookingStatus =
+  | 'PENDING_PROVIDER'
+  | 'ACCEPTED'
+  | 'SCHEDULED'
+  | 'ON_THE_WAY'
+  | 'ARRIVED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'DECLINED'
+  | 'EXPIRED';
+
+export type BookingActorType = 'CUSTOMER' | 'PROVIDER' | 'SYSTEM';
+
+export interface BookingAddressSnapshot {
+  flatNumber: string;
+  streetArea: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  landmark?: string | null;
+}
+
+export interface BookingUserSnapshot {
+  fullName: string | null;
+  email: string;
+  phone: string | null;
+  businessName?: string | null;
+}
+
+export interface BookingStatusHistoryItem {
+  id: string;
+  bookingId: string;
+  previousStatus: BookingStatus | null;
+  newStatus: BookingStatus;
+  actorType: BookingActorType;
+  actorUserId?: string | null;
+  reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ServiceRequestRecord {
+  id: string;
+  customerId: string;
+  serviceId: string;
+  selectedProviderId?: string | null;
+  description: string;
+  requestedDate: string; // YYYY-MM-DD
+  requestedStartTime: string; // HH:mm
+  requestedDurationHours: number;
+  addressId?: string | null;
+  addressSnapshot: BookingAddressSnapshot;
+  preferences?: Record<string, unknown> | null;
+  status: ServiceRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  service?: {
+    id: string;
+    title: string;
+    slug: string;
+    category?: {
+      id: string;
+      name: string;
+      slug: string;
+    };
+  };
+  selectedProvider?: {
+    id: string;
+    businessName: string | null;
+    user?: {
+      fullName: string | null;
+      email: string;
+      phone: string | null;
+    };
+  } | null;
+}
+
+export interface BookingRecord {
+  id: string;
+  referenceCode: string;
+  serviceRequestId: string;
+  customerId: string;
+  providerProfileId: string;
+  serviceId: string;
+  scheduledDate: string; // YYYY-MM-DD
+  scheduledStartTime: string; // HH:mm
+  scheduledEndTime: string; // HH:mm
+  durationHours: number;
+  status: BookingStatus;
+  serviceTitleSnapshot: string;
+  pricingModelSnapshot: CatalogPricingModel;
+  priceSnapshot: number | null;
+  locationSnapshot: BookingAddressSnapshot;
+  customerSnapshot: BookingUserSnapshot;
+  providerSnapshot: BookingUserSnapshot;
+  notes?: string | null;
+  cancellationReason?: string | null;
+  cancelledBy?: BookingActorType | null;
+  createdAt: string;
+  updatedAt: string;
+  serviceRequest?: ServiceRequestRecord;
+  statusHistory?: BookingStatusHistoryItem[];
+  customer?: {
+    id: string;
+    fullName: string | null;
+    email: string;
+    phone: string | null;
+  };
+  providerProfile?: {
+    id: string;
+    businessName: string | null;
+    avatarUrl?: string | null;
+    user?: {
+      fullName: string | null;
+      email: string;
+      phone: string | null;
+    };
+  };
+  service?: {
+    id: string;
+    title: string;
+    slug: string;
+    category?: {
+      name: string;
+      slug: string;
+    };
+  };
+}
+
+export interface CreateServiceRequestInput {
+  serviceId: string;
+  providerProfileId?: string;
+  description: string;
+  addressId?: string;
+  address?: {
+    flatNumber: string;
+    streetArea: string;
+    city: string;
+    state?: string;
+    postalCode: string;
+    landmark?: string;
+  };
+  requestedDate: string; // YYYY-MM-DD
+  requestedStartTime: string; // HH:mm
+  requestedDurationHours?: number;
+  preferences?: {
+    timeSlot?: string;
+    additionalInstructions?: string;
+    accessInstructions?: string;
+    hasPets?: boolean;
+    parkingAvailable?: boolean;
+    bringTools?: boolean;
+  };
+}
+
+export interface AcceptBookingRequest {
+  notes?: string;
+}
+
+export interface DeclineBookingRequest {
+  reason: string;
+}
+
+export interface CancelBookingRequest {
+  reason: string;
+}
+
+export interface RescheduleBookingRequest {
+  newDate: string; // YYYY-MM-DD
+  newStartTime: string; // HH:mm
+  durationHours?: number;
+}
+
+export interface UpdateExecutionStatusRequest {
+  status: 'ON_THE_WAY' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED';
+  notes?: string;
+}
+
+export interface BookingListQuery {
+  status?: BookingStatus | BookingStatus[];
+  page?: number;
+  limit?: number;
+}
+
+export interface BookingListResponse {
+  bookings: BookingRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 

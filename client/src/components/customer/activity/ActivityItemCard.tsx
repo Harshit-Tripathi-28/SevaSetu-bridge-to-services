@@ -9,6 +9,7 @@ import {
   Star,
   CreditCard,
   XCircle,
+  FileText,
 } from 'lucide-react';
 import { Card, CardContent } from '../../ui/Card';
 import { Badge } from '../../ui/Badge';
@@ -25,6 +26,7 @@ export interface ActivityItemCardProps {
   };
   onRebook?: (item: CustomerActivityItem) => void;
   onCancelBooking?: (item: CustomerActivityItem) => void;
+  onReschedule?: (item: CustomerActivityItem) => void;
 }
 
 const statusBadgeConfig: Record<
@@ -42,7 +44,9 @@ export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({
   item,
   onRebook,
   onCancelBooking,
+  onReschedule,
 }) => {
+
   const badge = statusBadgeConfig[item.status] || { variant: 'neutral', label: item.status };
 
   return (
@@ -52,9 +56,11 @@ export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-100">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h4 className="font-semibold text-sm sm:text-base text-neutral-900 leading-tight">
-                {item.serviceTitle}
-              </h4>
+              <Link to={`/activity/${item.id}`} className="hover:underline">
+                <h4 className="font-semibold text-sm sm:text-base text-neutral-900 leading-tight">
+                  {item.serviceTitle}
+                </h4>
+              </Link>
               <Badge variant={badge.variant} size="sm" withDot>
                 {badge.label}
               </Badge>
@@ -108,6 +114,13 @@ export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({
 
         {/* Part 6 Integrated Action Row */}
         <div className="pt-2 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-100">
+          {/* Action: View Booking Details */}
+          <Link to={`/activity/${item.id}`}>
+            <Button size="sm" variant="outline" leftIcon={<FileText size={13} />}>
+              Details
+            </Button>
+          </Link>
+
           {/* Action: Pay Now (if payment pending) */}
           {item.paymentStatus === 'pending' && item.status !== 'cancelled' && (
             <Link to={`/payment/${item.id}`}>
@@ -156,6 +169,18 @@ export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({
             </Button>
           )}
 
+          {/* Action: Reschedule Booking (if upcoming or requested) */}
+          {(item.status === 'requested' || item.status === 'upcoming') && onReschedule && (
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<Calendar size={13} />}
+              onClick={() => onReschedule(item)}
+            >
+              Reschedule
+            </Button>
+          )}
+
           {/* Action: Cancel Booking (if upcoming or requested) */}
           {(item.status === 'requested' || item.status === 'upcoming') && onCancelBooking && (
             <Button
@@ -169,6 +194,7 @@ export const ActivityItemCard: React.FC<ActivityItemCardProps> = ({
             </Button>
           )}
         </div>
+
       </CardContent>
     </Card>
   );

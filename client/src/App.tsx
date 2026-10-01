@@ -38,6 +38,7 @@ import {
   RequestServicePage,
   CustomerActivityPage,
   CustomerProfilePage,
+  CustomerBookingDetailPage,
 } from './pages/customer';
 import {
   ProviderOverviewPage,
@@ -331,6 +332,22 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute allowedRoles={['CUSTOMER', 'ADMIN']}>
                   <CustomerActivityPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/activity/:id"
+              element={
+                <ProtectedRoute allowedRoles={['CUSTOMER', 'ADMIN']}>
+                  <CustomerBookingDetailPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/bookings/:id"
+              element={
+                <ProtectedRoute allowedRoles={['CUSTOMER', 'ADMIN']}>
+                  <CustomerBookingDetailPage />
                 </ProtectedRoute>
               }
             />

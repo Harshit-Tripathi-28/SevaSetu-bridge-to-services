@@ -65,6 +65,8 @@ model User {
 
   addresses       Address[]
   providerProfile ServiceProviderProfile?
+  serviceRequests ServiceRequest[]
+  customerBookings Booking[]
 
   @@index([email])
   @@index([role])
@@ -85,6 +87,8 @@ model Address {
   isDefault  Boolean      @default(false)
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
+
+  serviceRequests ServiceRequest[]
 
   @@index([userId])
   @@index([userId, isDefault])
@@ -123,6 +127,8 @@ model Service {
   updatedAt        DateTime     @updatedAt
 
   providerServices ProviderService[]
+  serviceRequests  ServiceRequest[]
+  bookings         Booking[]
 
   @@index([categoryId])
   @@index([slug])
@@ -150,6 +156,8 @@ model ServiceProviderProfile {
   serviceAreas          ProviderServiceArea[]
   availabilities        ProviderAvailability[]
   availabilityOverrides ProviderAvailabilityOverride[]
+  serviceRequests       ServiceRequest[]
+  bookings              Booking[]
 
   @@index([userId])
   @@index([onboardingStatus])
@@ -238,3 +246,119 @@ model ProviderAvailabilityOverride {
   @@index([providerProfileId])
   @@index([providerProfileId, date])
 }
+
+enum ServiceRequestStatus {
+  SUBMITTED
+  PENDING_PROVIDER
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum BookingStatus {
+  PENDING_PROVIDER
+  ACCEPTED
+  SCHEDULED
+  ON_THE_WAY
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DECLINED
+  EXPIRED
+}
+
+enum BookingActorType {
+  CUSTOMER
+  PROVIDER
+  SYSTEM
+}
+
+model ServiceRequest {
+  id                     String                 @id @default(uuid())
+  customerId             String
+  customer               User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  serviceId              String
+  service                Service                @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  selectedProviderId     String?
+  selectedProvider       ServiceProviderProfile? @relation(fields: [selectedProviderId], references: [id], onDelete: SetNull)
+  description            String
+  requestedDate          DateTime               @db.Date
+  requestedStartTime     String                 // "HH:mm" e.g. "10:00"
+  requestedDurationHours Float                  @default(1.0)
+  addressId              String?
+  address                Address?               @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  addressSnapshot        Json                   // Immutable address snapshot at request time
+  preferences            Json?                  // instructions, access, hasPets, parking, etc.
+  status                 ServiceRequestStatus   @default(PENDING_PROVIDER)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  bookings               Booking[]
+
+  @@index([customerId])
+  @@index([serviceId])
+  @@index([selectedProviderId])
+  @@index([status])
+  @@index([requestedDate])
+}
+
+model Booking {
+  id                    String                 @id @default(uuid())
+  referenceCode         String                 @unique // e.g. "BK-YYYYMMDD-XXXX"
+  serviceRequestId      String
+  serviceRequest        ServiceRequest         @relation(fields: [serviceRequestId], references: [id], onDelete: Restrict)
+  customerId            String
+  customer              User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  providerProfileId     String
+  providerProfile       ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+  serviceId             String
+  service               Service                @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  scheduledDate         DateTime               @db.Date
+  scheduledStartTime    String                 // e.g. "10:00"
+  scheduledEndTime      String                 // e.g. "12:00"
+  durationHours         Float                  @default(1.0)
+  status                BookingStatus          @default(PENDING_PROVIDER)
+
+  // Snapshots (Immutable historical data)
+  serviceTitleSnapshot  String
+  pricingModelSnapshot  PricingModel           @default(FIXED)
+  priceSnapshot         Float?
+  locationSnapshot      Json                   // { flatNumber, streetArea, city, state, postalCode, landmark }
+  customerSnapshot      Json                   // { fullName, email, phone }
+  providerSnapshot      Json                   // { businessName, displayName, phone, email }
+
+  notes                 String?
+  cancellationReason    String?
+  cancelledBy           BookingActorType?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  statusHistory         BookingStatusHistory[]
+
+  @@index([customerId])
+  @@index([providerProfileId])
+  @@index([serviceId])
+  @@index([serviceRequestId])
+  @@index([scheduledDate])
+  @@index([status])
+  @@index([providerProfileId, scheduledDate, status])
+}
+
+model BookingStatusHistory {
+  id             String           @id @default(uuid())
+  bookingId      String
+  booking        Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  previousStatus BookingStatus?
+  newStatus      BookingStatus
+  actorType      BookingActorType
+  actorUserId    String?
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+
+  @@index([bookingId])
+  @@index([createdAt])
+}
+

@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { ProviderController } from '../controllers/provider.controller.js';
 import { AvailabilityController } from '../controllers/availability.controller.js';
 import { SearchController } from '../controllers/search.controller.js';
+import { BookingController } from '../controllers/booking.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
+
 
 const router = Router();
 
@@ -46,5 +48,15 @@ router.post('/provider/availability', providerAuth, AvailabilityController.setAv
 router.post('/provider/availability/overrides', providerAuth, AvailabilityController.createOverride);
 router.delete('/provider/availability/overrides/:id', providerAuth, AvailabilityController.deleteOverride);
 
+// Phase 4: Provider Booking & Job Execution Management
+router.get('/provider/bookings/requests', providerAuth, BookingController.getProviderBookingRequests);
+router.get('/provider/bookings', providerAuth, BookingController.getProviderBookings);
+router.get('/provider/bookings/:id', providerAuth, BookingController.getProviderBookingById);
+router.post('/provider/bookings/:id/accept', providerAuth, BookingController.acceptBooking);
+router.post('/provider/bookings/:id/decline', providerAuth, BookingController.declineBooking);
+router.post('/provider/bookings/:id/status', providerAuth, BookingController.updateExecutionStatus);
+router.post('/provider/bookings/:id/cancel', providerAuth, BookingController.cancelProviderBooking);
+
 export default router;
+
 
