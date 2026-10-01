@@ -25,7 +25,7 @@ export interface ReviewFormProps {
     comment: string;
     createdAt: string;
   };
-  onSubmitReview?: (reviewData: ReviewSubmissionData) => void;
+  onSubmitReview?: (reviewData: ReviewSubmissionData) => Promise<void> | void;
   onCancel?: () => void;
 }
 
@@ -47,9 +47,10 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
     communication: 0,
   });
   const [submitted, setSubmitted] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (rating === 0) {
       setError('Please select an overall star rating (1 to 5 stars).');
@@ -67,10 +68,17 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
       isAnonymous,
     };
 
-    if (onSubmitReview) {
-      onSubmitReview(reviewData);
+    try {
+      setIsSubmitting(true);
+      if (onSubmitReview) {
+        await onSubmitReview(reviewData);
+      }
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit review');
+    } finally {
+      setIsSubmitting(false);
     }
-    setSubmitted(true);
   };
 
   // If already reviewed or just submitted
@@ -237,7 +245,14 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
               </Button>
             )}
 
-            <Button type="submit" variant="primary" size="sm" leftIcon={<Star size={14} />}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              leftIcon={<Star size={14} />}
+              disabled={isSubmitting}
+              isLoading={isSubmitting}
+            >
               Submit Review
             </Button>
           </div>

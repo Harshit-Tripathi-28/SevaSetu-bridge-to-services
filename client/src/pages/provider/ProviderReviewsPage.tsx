@@ -1,17 +1,52 @@
-import React, { useState } from 'react';
-import { Star, ShieldCheck, Filter } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Star, ShieldCheck, Filter, RefreshCw, AlertCircle } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Alert } from '../../components/ui/Alert';
 import { NoReviewsState } from '../../components/provider/ProviderEmptyStates';
 import { ReviewCard } from '../../components/transaction/ReviewCard';
+import { ReviewService } from '../../services/review.service';
 import type { ReviewItem } from '../../types';
 
 export const ProviderReviewsPage: React.FC = () => {
   const [filterRating, setFilterRating] = useState<string>('all');
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Honest verified client reviews from completed services (empty initial state per data integrity audit)
-  const [reviews] = useState<ReviewItem[]>([]);
+  const fetchReviews = async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const data = await ReviewService.getProviderOwnReviews();
+      const mapped: ReviewItem[] = data.reviews.map((r) => ({
+        id: r.id,
+        customerNameMasked: r.customerName || 'Verified Customer',
+        serviceTitle: 'Completed Service',
+        verifiedBooking: true,
+        rating: r.overallRating,
+        comment: r.reviewText || '',
+        createdAt: new Date(r.createdAt).toLocaleDateString(),
+        aspects: {
+          punctuality: r.punctuality ?? undefined,
+          quality: r.workmanship ?? undefined,
+          cleanliness: r.cleanliness ?? undefined,
+          communication: r.communication ?? undefined,
+        },
+      }));
+      setReviews(mapped);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to load reviews');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReviews();
+  }, []);
 
   const filteredReviews = reviews.filter((r) => {
     if (filterRating === 'all') return true;
@@ -35,7 +70,27 @@ export const ProviderReviewsPage: React.FC = () => {
           { label: 'Provider Console', href: '/provider' },
           { label: 'Reviews' },
         ]}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
+            onClick={fetchReviews}
+            disabled={isLoading}
+          >
+            Refresh
+          </Button>
+        }
       />
+
+      {errorMessage && (
+        <Alert variant="error" title="Failed to load reviews" onClose={() => setErrorMessage(null)}>
+          <div className="flex items-center gap-2">
+            <AlertCircle size={15} />
+            <span>{errorMessage}</span>
+          </div>
+        </Alert>
+      )}
 
       {/* Rating Breakdown & Average Summary Grid */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">

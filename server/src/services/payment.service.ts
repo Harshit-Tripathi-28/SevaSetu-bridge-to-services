@@ -18,6 +18,7 @@ import {
 import { InvoiceService } from './invoice.service.js';
 import { EarningService } from './earning.service.js';
 import { FinancialPolicyService } from './financial-policy.service.js';
+import { EventService } from './event.service.js';
 
 
 export class PaymentValidationError extends Error {
@@ -378,7 +379,7 @@ export class PaymentService {
     // 4. Validate transition
     PaymentTransitionService.validateTransition(payment.status, 'PAID', 'CUSTOMER');
 
-    return await prisma.$transaction(async (tx) => {
+    const paymentResult = await prisma.$transaction(async (tx) => {
       // 5. Update payment to PAID
       const updatedPayment = await tx.payment.update({
         where: { id: payment.id },
@@ -424,6 +425,14 @@ export class PaymentService {
 
       return PaymentService.formatPaymentRecord(finalPayment || updatedPayment);
     });
+
+    // Safely dispatch payment confirmed event after transaction commit
+    const bookingForEvent = await prisma.booking.findUnique({ where: { id: paymentResult.bookingId } });
+    if (bookingForEvent) {
+      void EventService.onPaymentPaid(paymentResult, bookingForEvent);
+    }
+
+    return paymentResult;
   }
 
   /**

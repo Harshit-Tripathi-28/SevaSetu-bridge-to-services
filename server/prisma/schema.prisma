@@ -69,6 +69,15 @@ model User {
   customerBookings Booking[]
   payments        Payment[]
   invoices        Invoice[]
+  reviews         Review[]
+  conversations   Conversation[]
+  sentMessages    Message[]
+  notifications   Notification[]
+  notificationPreference NotificationPreference?
+  reportsMade     Report[]                 @relation("ReportedBy")
+  reportsReceived Report[]                 @relation("ReportedUser")
+  blocksInitiated Block[]                  @relation("BlockedBy")
+  blocksReceived  Block[]                  @relation("BlockedUser")
 
   @@index([email])
   @@index([role])
@@ -150,6 +159,8 @@ model ServiceProviderProfile {
   isPubliclyListed   Boolean          @default(false)
   onboardingStatus   OnboardingStatus @default(NOT_STARTED)
   vacationMode       Boolean          @default(false)
+  rating             Float            @default(0)
+  reviewCount        Int              @default(0)
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -164,6 +175,8 @@ model ServiceProviderProfile {
   invoices              Invoice[]
   earnings              ProviderEarning[]
   payouts               ProviderPayout[]
+  reviews               Review[]
+  conversations         Conversation[]
 
   @@index([userId])
   @@index([onboardingStatus])
@@ -298,6 +311,8 @@ model ServiceRequest {
   addressSnapshot        Json                   // Immutable address snapshot at request time
   preferences            Json?                  // instructions, access, hasPets, parking, etc.
   status                 ServiceRequestStatus   @default(PENDING_PROVIDER)
+  rebookedFromBookingId  String?
+  rebookedFromBooking    Booking?               @relation("RebookedFrom", fields: [rebookedFromBookingId], references: [id], onDelete: SetNull)
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
 
@@ -308,6 +323,7 @@ model ServiceRequest {
   @@index([selectedProviderId])
   @@index([status])
   @@index([requestedDate])
+  @@index([rebookedFromBookingId])
 }
 
 model Booking {
@@ -346,6 +362,10 @@ model Booking {
   invoices              Invoice[]
   refunds               Refund[]
   earnings              ProviderEarning[]
+  rebookedRequests      ServiceRequest[]       @relation("RebookedFrom")
+  review                Review?
+  conversation          Conversation?
+  reports               Report[]
 
   @@index([customerId])
   @@index([providerProfileId])
@@ -608,5 +628,177 @@ model InvoiceSequence {
   currentValue Int      @default(0)
   updatedAt    DateTime @updatedAt
 }
+
+// ==========================================
+// Phase 6: Real Reviews, Booking Chat, Notifications & Rebooking
+// ==========================================
+
+model Review {
+  id                String                 @id @default(uuid())
+  bookingId         String                 @unique // One customer review per booking
+  booking           Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  customerId        String
+  customer          User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+
+  overallRating     Int                    // 1-5 integer scale
+  punctuality       Int?                   // 1-5 integer scale
+  workmanship       Int?                   // 1-5 integer scale
+  cleanliness       Int?                   // 1-5 integer scale
+  communication     Int?                   // 1-5 integer scale
+  reviewText        String?
+
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  reports           Report[]
+
+  @@index([providerProfileId])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+enum MessageType {
+  TEXT
+  SYSTEM
+}
+
+model Conversation {
+  id                String                 @id @default(uuid())
+  bookingId         String                 @unique // Booking-scoped conversation
+  booking           Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customerId        String
+  customer          User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  providerProfileId String
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  messages          Message[]
+
+  @@index([bookingId])
+  @@index([customerId])
+  @@index([providerProfileId])
+  @@index([updatedAt])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUserId   String
+  senderUser     User         @relation(fields: [senderUserId], references: [id], onDelete: Restrict)
+
+  content        String
+  messageType    MessageType  @default(TEXT)
+
+  readAt         DateTime?
+  editedAt       DateTime?
+  deletedAt      DateTime?
+
+  createdAt      DateTime     @default(now())
+
+  reports        Report[]
+
+  @@index([conversationId])
+  @@index([senderUserId])
+  @@index([createdAt])
+  @@index([conversationId, createdAt])
+}
+
+enum NotificationType {
+  BOOKING_REQUEST_RECEIVED
+  BOOKING_ACCEPTED
+  BOOKING_DECLINED
+  BOOKING_CONFIRMED
+  BOOKING_RESCHEDULED
+  BOOKING_CANCELLED
+  SERVICE_STATUS_UPDATED
+  PAYMENT_UPDATED
+  INVOICE_AVAILABLE
+  REVIEW_REMINDER
+  NEW_MESSAGE
+  ACCOUNT_SECURITY
+}
+
+model Notification {
+  id                String           @id @default(uuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              NotificationType
+  title             String
+  message           String
+  relatedEntityType String?          // "BOOKING", "PAYMENT", "INVOICE", "MESSAGE", "REVIEW"
+  relatedEntityId   String?
+  isRead            Boolean          @default(false)
+  readAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+model NotificationPreference {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookingUpdates   Boolean  @default(true)
+  chatMessages     Boolean  @default(true)
+  paymentUpdates   Boolean  @default(true)
+  serviceReminders Boolean  @default(true)
+  reviewReminders  Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+model Report {
+  id             String       @id @default(uuid())
+  reporterUserId String
+  reporterUser   User         @relation("ReportedBy", fields: [reporterUserId], references: [id], onDelete: Restrict)
+  reportedUserId String?
+  reportedUser   User?        @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  bookingId      String?
+  booking        Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  messageId      String?
+  message        Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  reviewId       String?
+  review         Review?      @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+
+  reason         String
+  details        String?
+  status         ReportStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([reporterUserId])
+  @@index([reportedUserId])
+  @@index([bookingId])
+  @@index([status])
+}
+
+model Block {
+  id            String   @id @default(uuid())
+  blockerUserId String
+  blockerUser   User     @relation("BlockedBy", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blockedUserId String
+  blockedUser   User     @relation("BlockedUser", fields: [blockedUserId], references: [id], onDelete: Cascade)
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockerUserId])
+  @@index([blockedUserId])
+}
+
 
 

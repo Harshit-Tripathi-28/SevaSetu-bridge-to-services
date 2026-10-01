@@ -1051,5 +1051,205 @@ export interface BookingPaymentBreakdown {
   existingPayment?: PaymentRecord | null;
 }
 
+/**
+ * =============================================================================
+ * Phase 6: Real Reviews, Booking Chat, Notifications & Rebooking
+ * =============================================================================
+ */
+
+export interface ReviewRecord {
+  id: string;
+  bookingId: string;
+  customerId: string;
+  providerProfileId: string;
+  overallRating: number; // 1-5 integer scale
+  punctuality?: number | null; // 1-5 integer scale
+  workmanship?: number | null; // 1-5 integer scale
+  cleanliness?: number | null; // 1-5 integer scale
+  communication?: number | null; // 1-5 integer scale
+  reviewText?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customerName?: string | null;
+  serviceTitle?: string | null;
+  bookingReferenceCode?: string | null;
+}
+
+export interface ReviewSubmissionInput {
+  overallRating: number; // 1-5 integer
+  punctuality?: number; // 1-5 integer
+  workmanship?: number; // 1-5 integer
+  cleanliness?: number; // 1-5 integer
+  communication?: number; // 1-5 integer
+  reviewText?: string;
+}
+
+export interface ProviderReputationSummary {
+  providerProfileId: string;
+  averageRating: number;
+  totalReviews: number;
+  ratingDistribution: {
+    1: number;
+    2: number;
+    3: number;
+    4: number;
+    5: number;
+  };
+  aspectAverages: {
+    punctuality: number | null;
+    workmanship: number | null;
+    cleanliness: number | null;
+    communication: number | null;
+  };
+}
+
+export type MessageType = 'TEXT' | 'SYSTEM';
+
+export interface MessageRecord {
+  id: string;
+  conversationId: string;
+  senderUserId: string;
+  senderName?: string;
+  senderRole?: UserRole;
+  content: string;
+  messageType: MessageType;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface ConversationParticipant {
+  userId: string;
+  fullName: string;
+  role: UserRole;
+  avatarUrl?: string | null;
+}
+
+export interface ConversationRecord {
+  id: string;
+  bookingId: string;
+  bookingReferenceCode: string;
+  customerId: string;
+  providerProfileId: string;
+  customer: ConversationParticipant;
+  provider: ConversationParticipant;
+  serviceTitle: string;
+  bookingStatus: BookingStatus;
+  lastMessage?: MessageRecord | null;
+  unreadCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SendMessageInput {
+  content: string;
+}
+
+export type NotificationType =
+  | 'BOOKING_REQUEST_RECEIVED'
+  | 'BOOKING_ACCEPTED'
+  | 'BOOKING_DECLINED'
+  | 'BOOKING_CONFIRMED'
+  | 'BOOKING_RESCHEDULED'
+  | 'BOOKING_CANCELLED'
+  | 'SERVICE_STATUS_UPDATED'
+  | 'PAYMENT_UPDATED'
+  | 'INVOICE_AVAILABLE'
+  | 'REVIEW_REMINDER'
+  | 'NEW_MESSAGE'
+  | 'ACCOUNT_SECURITY';
+
+export interface NotificationRecord {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  relatedEntityType?: 'BOOKING' | 'PAYMENT' | 'INVOICE' | 'MESSAGE' | 'REVIEW' | null;
+  relatedEntityId?: string | null;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface NotificationPreferenceRecord {
+  id: string;
+  userId: string;
+  bookingUpdates: boolean;
+  chatMessages: boolean;
+  paymentUpdates: boolean;
+  serviceReminders: boolean;
+  reviewReminders: boolean;
+  updatedAt: string;
+}
+
+export interface UpdateNotificationPreferenceInput {
+  bookingUpdates?: boolean;
+  chatMessages?: boolean;
+  paymentUpdates?: boolean;
+  serviceReminders?: boolean;
+  reviewReminders?: boolean;
+}
+
+export interface RebookEligibilityCheck {
+  eligible: boolean;
+  reason?: string;
+  serviceId: string;
+  serviceTitle: string;
+  providerId: string;
+  providerName: string;
+  providerAvailable: boolean;
+  pricingModel: CatalogPricingModel;
+  basePrice?: number | null;
+  suggestedLocation: Record<string, unknown>;
+  previousPreferences?: Record<string, unknown> | null;
+}
+
+export interface CreateRebookRequestInput {
+  requestedDate: string; // YYYY-MM-DD
+  requestedStartTime: string; // HH:mm
+  requestedDurationHours?: number;
+  description?: string;
+  addressId?: string;
+  preferences?: Record<string, unknown>;
+}
+
+export type ReportStatus = 'PENDING' | 'REVIEWED' | 'RESOLVED' | 'DISMISSED';
+
+export interface ReportRecord {
+  id: string;
+  reporterUserId: string;
+  reportedUserId?: string | null;
+  bookingId?: string | null;
+  messageId?: string | null;
+  reviewId?: string | null;
+  reason: string;
+  details?: string | null;
+  status: ReportStatus;
+  createdAt: string;
+}
+
+export interface CreateReportInput {
+  reportedUserId?: string;
+  bookingId?: string;
+  messageId?: string;
+  reviewId?: string;
+  reason: string;
+  details?: string;
+}
+
+export interface BlockRecord {
+  id: string;
+  blockerUserId: string;
+  blockedUserId: string;
+  reason?: string | null;
+  createdAt: string;
+}
+
+export interface CreateBlockInput {
+  blockedUserId: string;
+  reason?: string;
+}
+
+
 
 

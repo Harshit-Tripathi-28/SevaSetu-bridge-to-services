@@ -6,6 +6,7 @@ import {
   MapPin,
   ArrowRight,
   User,
+  MessageSquare,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -86,11 +87,18 @@ export const ProviderJobCard: React.FC<ProviderJobCardProps> = ({
           Ref: {job.requestId || 'Standard Booking'}
         </span>
 
-        <Link to={`/provider/jobs/${job.id}`}>
-          <Button variant="primary" size="sm" rightIcon={<ArrowRight size={14} />} className="text-xs">
-            Manage Service
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link to={`/provider/messages?bookingId=${job.id}`}>
+            <Button variant="outline" size="sm" leftIcon={<MessageSquare size={14} />} className="text-xs">
+              Chat
+            </Button>
+          </Link>
+          <Link to={`/provider/jobs/${job.id}`}>
+            <Button variant="primary" size="sm" rightIcon={<ArrowRight size={14} />} className="text-xs">
+              Manage Service
+            </Button>
+          </Link>
+        </div>
       </CardFooter>
     </Card>
   );

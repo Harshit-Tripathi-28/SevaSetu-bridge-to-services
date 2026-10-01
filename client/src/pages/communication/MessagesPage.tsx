@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, LifeBuoy } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
@@ -9,11 +9,14 @@ import {
   ConversationView,
 } from '../../components/communication';
 import { SupportEntry } from '../../components/transaction';
+import { CommunicationService } from '../../services/communication.service';
+import { useAuth } from '../../context/AuthContext';
 import type {
   ConversationSummary,
   ConversationContextData,
   MessageItem,
 } from '../../types';
+import type { ConversationRecord, MessageRecord } from '@sevasetu/shared';
 
 export interface MessagesPageProps {
   userRole?: 'customer' | 'provider';
@@ -24,31 +27,180 @@ export const MessagesPage: React.FC<MessagesPageProps> = ({
 }) => {
   const { conversationId } = useParams<{ conversationId?: string }>();
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
 
-  const [selectedId, setSelectedId] = useState<string>(
-    conversationId || ''
-  );
+  const [selectedId, setSelectedId] = useState<string>(conversationId || '');
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isMobileListOpen, setIsMobileListOpen] = useState(!conversationId);
 
-  // Data-driven conversations list (empty initial state per data integrity audit)
+  // Raw conversations from backend
+  const [rawConversations, setRawConversations] = useState<ConversationRecord[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [messages, setMessages] = useState<Record<string, MessageItem[]>>({});
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
-  // Context metadata for current conversation
+  // Load conversations on mount
+  const loadConversations = useCallback(async () => {
+    setIsLoadingConversations(true);
+    try {
+      const list = await CommunicationService.getUserConversations();
+      setRawConversations(list);
+
+      const summaries: ConversationSummary[] = list.map((c) => {
+        const otherUserId = userRole === 'customer' ? c.provider.userId : c.customer.userId;
+        const otherParticipant =
+          userRole === 'customer' ? c.provider.fullName : c.customer.fullName;
+        const otherRole: 'customer' | 'provider' = userRole === 'customer' ? 'provider' : 'customer';
+        const otherAvatar =
+          userRole === 'customer' ? c.provider.avatarUrl || undefined : undefined;
+
+        let lastTime = 'Recently';
+        if (c.lastMessage) {
+          try {
+            lastTime = new Date(c.lastMessage.createdAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          } catch {
+            lastTime = 'Recently';
+          }
+        }
+
+        return {
+          id: c.id,
+          otherPartyId: otherUserId,
+          otherPartyName: otherParticipant,
+          otherPartyRole: otherRole,
+          otherPartyAvatar: otherAvatar,
+          bookingReference: c.bookingReferenceCode,
+          serviceTitle: c.serviceTitle,
+          lastMessage: c.lastMessage?.content || 'Conversation started',
+          lastMessageTime: lastTime,
+          unreadCount: c.unreadCount || 0,
+          isOnline: true,
+        };
+      });
+
+      setConversations(summaries);
+
+      // Select first conversation if none selected
+      if (!selectedId && summaries.length > 0 && summaries[0]) {
+        setSelectedId(summaries[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, [selectedId, userRole]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  // Load messages for selected conversation
+  const loadMessages = useCallback(async (id: string) => {
+    if (!id) return;
+    try {
+      const res = await CommunicationService.getConversationMessages(id);
+      const mapped: MessageItem[] = res.messages.map((m) => {
+        const r = m.senderRole?.toLowerCase();
+        const role: 'customer' | 'provider' | 'system' =
+          r === 'provider' ? 'provider' : r === 'admin' || r === 'system' ? 'system' : 'customer';
+
+        return {
+          id: m.id,
+          conversationId: m.conversationId,
+          senderId: m.senderUserId === authUser?.id ? 'self' : m.senderUserId,
+          senderRole: role,
+          senderName: m.senderName || (m.senderUserId === authUser?.id ? 'You' : 'Participant'),
+          content: m.content,
+          timestamp: new Date(m.createdAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          status: m.readAt ? 'read' : 'sent',
+        };
+      });
+
+      setMessages((prev) => ({ ...prev, [id]: mapped }));
+
+      // Join socket room
+      const socket = CommunicationService.getSocket();
+      socket.emit('join_conversation', { conversationId: id });
+    } catch (err) {
+      console.error('Failed to load messages for conversation:', id, err);
+    }
+  }, [authUser?.id]);
+
+  useEffect(() => {
+    if (selectedId) {
+      loadMessages(selectedId);
+    }
+  }, [selectedId, loadMessages]);
+
+  // Listen for real-time WebSocket messages
+  useEffect(() => {
+    const socket = CommunicationService.getSocket();
+
+    const handleNewMessage = (msg: MessageRecord) => {
+      const r = msg.senderRole?.toLowerCase();
+      const role: 'customer' | 'provider' | 'system' =
+        r === 'provider' ? 'provider' : r === 'admin' || r === 'system' ? 'system' : 'customer';
+
+      const item: MessageItem = {
+        id: msg.id,
+        conversationId: msg.conversationId,
+        senderId: msg.senderUserId === authUser?.id ? 'self' : msg.senderUserId,
+        senderRole: role,
+        senderName: msg.senderName || (msg.senderUserId === authUser?.id ? 'You' : 'Participant'),
+        content: msg.content,
+        timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        status: 'sent',
+      };
+
+      setMessages((prev) => ({
+        ...prev,
+        [msg.conversationId]: [...(prev[msg.conversationId] || []), item],
+      }));
+
+      // Update snippet on conversation list
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === msg.conversationId
+            ? {
+                ...c,
+                lastMessage: msg.content,
+                lastMessageTime: 'Just now',
+                unreadCount: msg.senderUserId === authUser?.id ? c.unreadCount : c.unreadCount + 1,
+              }
+            : c
+        )
+      );
+    };
+
+    socket.on('conversation:message', handleNewMessage);
+
+    return () => {
+      socket.off('conversation:message', handleNewMessage);
+    };
+  }, [authUser?.id]);
+
+  const activeRaw = rawConversations.find((c) => c.id === selectedId);
   const activeConversation = conversations.find((c) => c.id === selectedId);
 
-  const contextData: ConversationContextData | undefined = activeConversation
+  const contextData: ConversationContextData | undefined = activeRaw
     ? {
-        bookingId: activeConversation.bookingReference,
-        serviceTitle: activeConversation.serviceTitle,
-        scheduledDate: '26 Sep 2026, 10:30 AM',
-        statusLabel: 'In Progress',
-        locationSummary: 'Flat 402, Green Valley Enclave, Sector 14',
+        bookingId: activeRaw.bookingReferenceCode,
+        serviceTitle: activeRaw.serviceTitle,
+        scheduledDate: new Date(activeRaw.createdAt).toLocaleDateString(),
+        statusLabel: activeRaw.bookingStatus,
+        locationSummary: 'Authorized service address on file',
       }
     : undefined;
-
-  // Active messages thread (empty initial state per data integrity audit)
-  const [messages, setMessages] = useState<Record<string, MessageItem[]>>({});
 
   const handleSelectConversation = (id: string) => {
     setSelectedId(id);
@@ -68,47 +220,46 @@ export const MessagesPage: React.FC<MessagesPageProps> = ({
     );
   };
 
-  const handleSendMessage = (content: string, attachmentName?: string) => {
-    if (!selectedId || (!content.trim() && !attachmentName)) return;
+  const handleSendMessage = async (content: string) => {
+    if (!selectedId || !content.trim()) return;
 
-    const newMessage: MessageItem = {
-      id: `msg-${Date.now()}`,
-      conversationId: selectedId,
-      senderId: 'self',
-      senderRole: userRole,
-      senderName: userRole === 'customer' ? 'You (Client)' : 'You (Partner)',
-      content: content.trim(),
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      status: 'sent',
-      attachment: attachmentName
-        ? {
-            name: attachmentName,
-            type: attachmentName.endsWith('.pdf') ? 'document' : 'image',
-            sizeFormatted: '1.2 MB',
-          }
-        : undefined,
-    };
+    try {
+      const msg = await CommunicationService.sendMessage(selectedId, content.trim());
 
-    setMessages((prev) => ({
-      ...prev,
-      [selectedId]: [...(prev[selectedId] || []), newMessage],
-    }));
+      const newMessage: MessageItem = {
+        id: msg.id,
+        conversationId: selectedId,
+        senderId: 'self',
+        senderRole: userRole,
+        senderName: 'You',
+        content: msg.content,
+        timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        status: 'sent',
+      };
 
-    // Update conversation snippet
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === selectedId
-          ? {
-              ...c,
-              lastMessage: content.trim() || `[Attachment: ${attachmentName}]`,
-              lastMessageTime: 'Just now',
-            }
-          : c
-      )
-    );
+      setMessages((prev) => ({
+        ...prev,
+        [selectedId]: [...(prev[selectedId] || []), newMessage],
+      }));
+
+      // Update conversation list snippet
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedId
+            ? {
+                ...c,
+                lastMessage: msg.content,
+                lastMessageTime: 'Just now',
+              }
+            : c
+        )
+      );
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    }
   };
 
   return (
@@ -169,6 +320,7 @@ export const MessagesPage: React.FC<MessagesPageProps> = ({
             conversations={conversations}
             selectedId={selectedId}
             onSelectConversation={handleSelectConversation}
+            isLoading={isLoadingConversations}
           />
         </div>
 

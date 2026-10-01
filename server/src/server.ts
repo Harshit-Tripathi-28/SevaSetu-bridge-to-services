@@ -1,14 +1,20 @@
+import { createServer } from 'http';
 import { createApp } from './app.js';
 import { config, validateConfig } from './config/index.js';
 import { getPrismaClient } from './config/database.js';
+import { initSocketServer } from './socket.js';
 
 // Validate configuration on boot
 validateConfig();
 
 const app = createApp();
+const server = createServer(app);
 
-const server = app.listen(config.port, () => {
-  console.log(`[SevaSetu Server] HTTP server listening on http://localhost:${config.port}`);
+// Attach Socket.IO
+initSocketServer(server);
+
+server.listen(config.port, () => {
+  console.log(`[SevaSetu Server] HTTP & WebSocket server listening on http://localhost:${config.port}`);
 });
 
 async function handleShutdown(signal: string) {

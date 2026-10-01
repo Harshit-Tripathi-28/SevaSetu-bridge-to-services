@@ -4,12 +4,16 @@ import {
   CheckCircle2,
   Mail,
   Phone,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Textarea } from '../ui/Textarea';
+import { Alert } from '../ui/Alert';
+import { ReportService } from '../../services/report.service';
 import type { SupportTopic } from '../../types';
 
 export interface SupportEntryProps {
@@ -41,17 +45,32 @@ export const SupportEntry: React.FC<SupportEntryProps> = ({
   const [subject, setSubject] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [contactEmail, setContactEmail] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<boolean>(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await ReportService.createReport({
+        bookingId: bookingReference || undefined,
+        reason: `[${topic}] ${subject.trim()}: ${description.trim()}${contactEmail ? ` (Contact: ${contactEmail})` : ''}`,
+      });
+      setSubmitted(true);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to submit report inquiry');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleReset = () => {
     setSubmitted(false);
     setSubject('');
     setDescription('');
+    setErrorMessage(null);
     onClose();
   };
 
@@ -84,6 +103,15 @@ export const SupportEntry: React.FC<SupportEntryProps> = ({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4 py-1">
+          {errorMessage && (
+            <Alert variant="error" title="Submission Error" onClose={() => setErrorMessage(null)}>
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} />
+                <span>{errorMessage}</span>
+              </div>
+            </Alert>
+          )}
+
           {bookingReference && (
             <div className="p-2.5 rounded-lg bg-neutral-50 border border-neutral-200 text-xs flex justify-between">
               <span className="text-neutral-500">Associated Booking:</span>
@@ -150,11 +178,17 @@ export const SupportEntry: React.FC<SupportEntryProps> = ({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-200">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" size="sm" leftIcon={<LifeBuoy size={14} />}>
-              Submit Request
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              leftIcon={isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <LifeBuoy size={14} />}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Registering...' : 'Submit Request'}
             </Button>
           </div>
         </form>

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, AlertCircle, MessageSquare, Star, RotateCcw } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
-import { BookingSummary, CancellationDialog, RescheduleDialog } from '../../components/transaction';
+import { BookingSummary, CancellationDialog, RescheduleDialog, RebookModal } from '../../components/transaction';
 import { bookingService } from '../../services/booking.service';
 import type { BookingRecord } from '@sevasetu/shared';
 import type { CancellationReason } from '../../types';
@@ -22,6 +22,7 @@ export const CustomerBookingDetailPage: React.FC = () => {
   // Dialogs
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+  const [isRebookOpen, setIsRebookOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchBooking = async () => {
@@ -115,7 +116,31 @@ export const CustomerBookingDetailPage: React.FC = () => {
           { label: `#${booking.referenceCode || booking.id}` },
         ]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={`/messages?bookingId=${booking.id}`}>
+              <Button variant="outline" size="sm" leftIcon={<MessageSquare size={14} />}>
+                Chat
+              </Button>
+            </Link>
+
+            {booking.status === 'COMPLETED' && (
+              <>
+                <Link to={`/reviews?bookingId=${booking.id}`}>
+                  <Button variant="outline" size="sm" leftIcon={<Star size={14} />}>
+                    Review
+                  </Button>
+                </Link>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<RotateCcw size={14} />}
+                  onClick={() => setIsRebookOpen(true)}
+                >
+                  Rebook
+                </Button>
+              </>
+            )}
+
             <Button
               variant="outline"
               size="sm"
@@ -155,6 +180,24 @@ export const CustomerBookingDetailPage: React.FC = () => {
         onCancel={() => setIsCancelOpen(true)}
         onReschedule={() => setIsRescheduleOpen(true)}
       />
+
+      {/* Rebook Modal */}
+      {isRebookOpen && (
+        <RebookModal
+          isOpen={isRebookOpen}
+          onClose={() => setIsRebookOpen(false)}
+          data={{
+            previousBookingId: booking.id,
+            serviceTitle: booking.serviceTitleSnapshot || booking.service?.title || 'Service',
+            categoryName: booking.service?.category?.name || 'Home Services',
+            providerName: booking.providerProfile?.user?.fullName ?? undefined,
+            previousAddressSummary: typeof booking.locationSnapshot === 'object' && booking.locationSnapshot && 'addressLine1' in booking.locationSnapshot
+              ? (booking.locationSnapshot as { addressLine1: string }).addressLine1
+              : '',
+            lastServicedDate: booking.scheduledDate ?? '',
+          }}
+        />
+      )}
 
       {/* Cancellation Dialog */}
       <CancellationDialog

@@ -145,7 +145,7 @@ const CustomerLayout: React.FC = () => {
             aria-label="Service Notifications"
             className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           >
-            <NotificationBadge count={2} size={18} />
+            <NotificationBadge size={18} />
           </Link>
 
           <Link to="/provider">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, Sliders } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
@@ -7,29 +7,110 @@ import {
   NotificationPreferences,
 } from '../../components/notifications';
 import { cn } from '../../lib/utils';
-import type { NotificationItem } from '../../types';
+import { NotificationService } from '../../services/notification.service';
+import { CommunicationService } from '../../services/communication.service';
+import type { NotificationItem as NotificationItemType } from '../../types';
+import type { NotificationRecord } from '@sevasetu/shared';
 
 export interface NotificationsPageProps {
   userRole?: 'customer' | 'provider';
+}
+
+function mapBackendNotificationToItem(n: NotificationRecord): NotificationItemType {
+  let category: NotificationItemType['category'] = 'system';
+  if (n.type.startsWith('BOOKING_')) category = 'booking_update';
+  else if (n.type === 'SERVICE_STATUS_UPDATED') category = 'service_status';
+  else if (n.type === 'PAYMENT_UPDATED' || n.type === 'INVOICE_AVAILABLE') category = 'payment_update';
+  else if (n.type === 'REVIEW_REMINDER') category = 'review_reminder';
+  else if (n.type === 'NEW_MESSAGE') category = 'system';
+
+  let timeFormatted = 'Recently';
+  try {
+    timeFormatted = new Date(n.createdAt).toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    timeFormatted = 'Recently';
+  }
+
+  return {
+    id: n.id,
+    title: n.title,
+    description: n.message,
+    category,
+    timestamp: timeFormatted,
+    isRead: n.isRead,
+    actionUrl:
+      n.relatedEntityType === 'BOOKING' && n.relatedEntityId
+        ? `/activity/${n.relatedEntityId}`
+        : undefined,
+  };
 }
 
 export const NotificationsPage: React.FC<NotificationsPageProps> = ({
   userRole = 'customer',
 }) => {
   const [activeTab, setActiveTab] = useState<'notifications' | 'preferences'>('notifications');
+  const [notifications, setNotifications] = useState<NotificationItemType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Honest data-driven notifications list (empty initial state per data integrity audit)
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const loadNotifications = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await NotificationService.getUserNotifications(1, 50);
+      const items = res.notifications.map(mapBackendNotificationToItem);
+      setNotifications(items);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const handleMarkAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  // Real-time notification updates via Socket.IO
+  useEffect(() => {
+    const socket = CommunicationService.getSocket();
+
+    const handleNewNotification = (notif: NotificationRecord) => {
+      const item = mapBackendNotificationToItem(notif);
+      setNotifications((prev) => [item, ...prev.filter((n) => n.id !== notif.id)]);
+    };
+
+    socket.on('notification:new', handleNewNotification);
+
+    return () => {
+      socket.off('notification:new', handleNewNotification);
+    };
+  }, []);
+
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await NotificationService.markAsRead(id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
   };
 
-  const handleMarkAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  const handleMarkAllAsRead = async () => {
+    try {
+      await NotificationService.markAllAsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+    }
   };
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   return (
     <PageContainer maxWidth="xl" className="space-y-6 pb-12">
@@ -61,9 +142,9 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
         >
           <Bell size={14} />
           <span>All Notifications</span>
-          {notifications.filter((n) => !n.isRead).length > 0 && (
+          {unreadCount > 0 && (
             <span className="w-5 h-5 rounded-full bg-primary-600 text-white text-[10px] font-bold flex items-center justify-center">
-              {notifications.filter((n) => !n.isRead).length}
+              {unreadCount}
             </span>
           )}
         </button>
@@ -91,6 +172,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
           notifications={notifications}
           onMarkAsRead={handleMarkAsRead}
           onMarkAllAsRead={handleMarkAllAsRead}
+          isLoading={isLoading}
         />
       ) : (
         <NotificationPreferences />

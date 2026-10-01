@@ -4,6 +4,7 @@ import { BookingTransitionService } from './booking-transition.service.js';
 import { EarningService } from './earning.service.js';
 import { PaymentService } from './payment.service.js';
 import { AvailabilityService, timeToMinutes, validateTimeFormat } from './availability.service.js';
+import { EventService } from './event.service.js';
 import type {
   CreateServiceRequestInput,
   RescheduleBookingRequest,
@@ -355,7 +356,9 @@ export class BookingService {
     });
 
     // Return complete booking with populated relations
-    return (await this.getBookingByIdInternal(booking.id)) as BookingRecord;
+    const createdBooking = (await this.getBookingByIdInternal(booking.id)) as BookingRecord;
+    await EventService.onBookingCreated(createdBooking);
+    return createdBooking;
   }
 
   /**
@@ -543,7 +546,9 @@ export class BookingService {
       });
     });
 
-    return (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    const acceptedBooking = (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    await EventService.onBookingAccepted(acceptedBooking);
+    return acceptedBooking;
   }
 
   /**
@@ -607,7 +612,9 @@ export class BookingService {
       });
     });
 
-    return (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    const declinedBooking = (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    await EventService.onBookingDeclined(declinedBooking, reason);
+    return declinedBooking;
   }
 
   /**
@@ -673,7 +680,9 @@ export class BookingService {
       }
     });
 
-    return (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    const updatedBooking = (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    await EventService.onExecutionStatusUpdated(updatedBooking, nextStatus);
+    return updatedBooking;
   }
 
   /**
@@ -751,7 +760,9 @@ export class BookingService {
       console.error(`[CancellationRefund] Error processing refund for booking ${bookingId}:`, refundErr);
     }
 
-    return (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    const cancelledBooking = (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    await EventService.onBookingCancelled(cancelledBooking, actorType, reason);
+    return cancelledBooking;
   }
 
   /**
@@ -883,7 +894,9 @@ export class BookingService {
       });
     });
 
-    return (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    const rescheduledBooking = (await this.getBookingByIdInternal(bookingId)) as BookingRecord;
+    await EventService.onBookingRescheduled(rescheduledBooking, customerId, input.newDate, input.newStartTime);
+    return rescheduledBooking;
   }
 
   /**
