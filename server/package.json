@@ -14,13 +14,14 @@
     "prisma:migrate:dev": "prisma migrate dev --schema=prisma/schema.prisma",
     "prisma:migrate:status": "prisma migrate status --schema=prisma/schema.prisma",
     "seed:catalog": "tsx src/scripts/seed-catalog.ts",
-    "test": "tsx src/tests/auth.test.ts && tsx src/tests/phase2.test.ts && tsx src/tests/phase3.test.ts && tsx src/tests/phase4.test.ts && tsx src/tests/phase5.test.ts && tsx src/tests/phase6.test.ts",
+    "test": "tsx src/tests/auth.test.ts && tsx src/tests/phase2.test.ts && tsx src/tests/phase3.test.ts && tsx src/tests/phase4.test.ts && tsx src/tests/phase5.test.ts && tsx src/tests/phase6.test.ts && tsx src/tests/phase7.test.ts",
     "test:auth": "tsx src/tests/auth.test.ts",
     "test:phase2": "tsx src/tests/phase2.test.ts",
     "test:phase3": "tsx src/tests/phase3.test.ts",
     "test:phase4": "tsx src/tests/phase4.test.ts",
     "test:phase5": "tsx src/tests/phase5.test.ts",
-    "test:phase6": "tsx src/tests/phase6.test.ts"
+    "test:phase6": "tsx src/tests/phase6.test.ts",
+    "test:phase7": "tsx src/tests/phase7.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

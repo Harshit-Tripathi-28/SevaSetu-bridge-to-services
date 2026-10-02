@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
@@ -7,16 +7,58 @@ import { Badge } from '../../components/ui/Badge';
 import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
 import { TransactionStatusBadge, PaymentStatusBadge } from '../../components/transaction';
+import { AdminService } from '../../services/admin.service';
 import type { AdminBookingItem } from '../../types/admin';
 
 export const AdminBookingsPage: React.FC = () => {
-  const [bookings] = useState<AdminBookingItem[]>([]);
+  const [bookings, setBookings] = useState<AdminBookingItem[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('scheduledDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const loadBookings = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const statusParam = statusFilter !== 'all' ? statusFilter.toUpperCase() : undefined;
+      const res = await AdminService.listBookings({
+        status: statusParam,
+        search: searchQuery || undefined,
+      });
+
+      const mapped: AdminBookingItem[] = (res.bookings || []).map((b: any) => ({
+        id: b.id,
+        serviceTitle: b.serviceTitleSnapshot || b.service?.title || 'Service Booking',
+        categoryName: b.service?.category?.name || 'General Category',
+        customerId: b.customerId,
+        customerNameMasked: b.customer?.fullName || 'Customer',
+        providerId: b.providerId,
+        providerNameMasked: b.provider?.user?.fullName || b.provider?.businessName || 'Unassigned',
+        scheduledDate: b.scheduledAt ? new Date(b.scheduledAt).toLocaleDateString() : 'N/A',
+        scheduledTime: b.scheduledAt ? new Date(b.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Standard',
+        locationSummary: b.locationSnapshot?.city || 'Zone 1',
+        status: (b.status?.toLowerCase() as any) || 'confirmed',
+        paymentStatus: (b.payment?.status?.toLowerCase() as any) || 'held_in_escrow',
+        totalAmount: b.pricingSnapshot?.finalPricePaise ? b.pricingSnapshot.finalPricePaise / 100 : (b.totalPricePaise ? b.totalPricePaise / 100 : 0),
+        currency: 'INR',
+        hasDispute: (b.disputes?.length || 0) > 0,
+        createdAt: b.createdAt ? new Date(b.createdAt).toLocaleDateString() : 'N/A',
+      }));
+
+      setBookings(mapped);
+      setTotalCount(res.total || mapped.length);
+    } catch (err) {
+      console.error('Failed to load bookings:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [statusFilter, searchQuery]);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
 
   const filters: AdminFilterConfig[] = [
     {
@@ -30,33 +72,17 @@ export const AdminBookingsPage: React.FC = () => {
         { label: 'In Progress', value: 'in_progress' },
         { label: 'Completed', value: 'completed' },
         { label: 'Cancelled', value: 'cancelled' },
-        { label: 'Disputed', value: 'disputed' },
-      ],
-    },
-    {
-      key: 'payment',
-      label: 'Payment State',
-      value: paymentFilter,
-      options: [
-        { label: 'All Payment States', value: 'all' },
-        { label: 'Held in Escrow', value: 'held_in_escrow' },
-        { label: 'Released', value: 'released' },
-        { label: 'Pending', value: 'pending' },
-        { label: 'Refunded', value: 'refunded' },
-        { label: 'Failed', value: 'failed' },
       ],
     },
   ];
 
   const handleFilterChange = (key: string, value: string) => {
     if (key === 'status') setStatusFilter(value);
-    if (key === 'payment') setPaymentFilter(value);
   };
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
-    setPaymentFilter('all');
   };
 
   const handleSort = (key: string) => {
@@ -112,7 +138,7 @@ export const AdminBookingsPage: React.FC = () => {
     },
     {
       key: 'paymentStatus',
-      header: 'Payment State',
+      header: 'Payment Status',
       sortable: true,
       render: (b) => <PaymentStatusBadge status={b.paymentStatus} />,
     },
@@ -153,15 +179,12 @@ export const AdminBookingsPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadBookings}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 Active Bookings
+              {totalCount} Bookings
             </Badge>
           </div>
         }
@@ -187,7 +210,7 @@ export const AdminBookingsPage: React.FC = () => {
         sortBy={sortBy}
         sortDirection={sortDirection}
         onSort={handleSort}
-        totalItems={bookings.length}
+        totalItems={totalCount}
       />
     </div>
   );

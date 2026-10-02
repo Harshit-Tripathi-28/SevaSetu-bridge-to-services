@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Eye, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -6,14 +6,53 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
+import { AdminService } from '../../services/admin.service';
 import type { AuditLogEntry } from '../../types/admin';
 
 export const AdminAuditLogsPage: React.FC = () => {
-  const [logs] = useState<AuditLogEntry[]>([]);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [entityFilter, setEntityFilter] = useState<string>('all');
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null);
+
+  const loadAuditLogs = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const entityType = entityFilter !== 'all' ? entityFilter : undefined;
+      const res = await AdminService.listAuditLogs({
+        entityType,
+        action: searchQuery || undefined,
+      });
+
+      const mapped: AuditLogEntry[] = (res.logs || []).map((l: any) => ({
+        id: l.id,
+        timestamp: l.createdAt ? new Date(l.createdAt).toLocaleString() : 'N/A',
+        actor: {
+          id: l.actorUserId,
+          name: l.actorUser?.fullName || 'Admin User',
+          role: (l.actorUser?.role?.toLowerCase() as any) || 'admin',
+        },
+        action: l.action,
+        entity: (l.entityType as any) || 'Setting',
+        entityId: l.entityId || 'SYS',
+        details: l.reason || JSON.stringify(l.metadata || {}),
+        ipAddressMasked: l.ipAddress || 'Internal',
+      }));
+
+      setLogs(mapped);
+      setTotalCount(res.total || mapped.length);
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [entityFilter, searchQuery]);
+
+  useEffect(() => {
+    loadAuditLogs();
+  }, [loadAuditLogs]);
 
   const filters: AdminFilterConfig[] = [
     {
@@ -120,15 +159,12 @@ export const AdminAuditLogsPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadAuditLogs}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 Logged Events
+              {totalCount} Logged Events
             </Badge>
           </div>
         }
@@ -151,7 +187,7 @@ export const AdminAuditLogsPage: React.FC = () => {
         isLoading={isLoading}
         emptyTitle="No Audit Events Recorded"
         emptyDescription="Audit records will automatically be logged when operational mutations or governance actions are executed."
-        totalItems={logs.length}
+        totalItems={totalCount}
       />
 
       {selectedEntry && (

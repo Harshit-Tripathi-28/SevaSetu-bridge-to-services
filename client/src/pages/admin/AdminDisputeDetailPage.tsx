@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -19,14 +19,35 @@ import { Badge } from '../../components/ui/Badge';
 import { Textarea } from '../../components/ui/Textarea';
 import { DisputeStatusBadge, DisputePriorityBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
+import { AdminService } from '../../services/admin.service';
 import type { DisputeStatus, DisputePriority, AdminActionDialogConfig } from '../../types/admin';
 
 export const AdminDisputeDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [status] = useState<DisputeStatus>('under_review');
-  const [priority] = useState<DisputePriority>('high');
+  const [dispute, setDispute] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [internalNote, setInternalNote] = useState<string>('');
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadDispute = useCallback(async () => {
+    if (!id) return;
+    setIsLoading(true);
+    try {
+      const data = await AdminService.getDisputeDetail(id);
+      setDispute(data);
+    } catch (err) {
+      console.error('Failed to load dispute detail:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadDispute();
+  }, [loadDispute]);
+
+  const status: DisputeStatus = (dispute?.status?.toLowerCase() as DisputeStatus) || 'under_review';
+  const priority: DisputePriority = (dispute?.priority?.toLowerCase() as DisputePriority) || 'high';
 
   const handleTriggerAction = (type: 'resolve' | 'escalate') => {
     if (type === 'resolve') {
@@ -57,6 +78,36 @@ export const AdminDisputeDetailPage: React.FC = () => {
       });
     }
   };
+
+  const handleConfirmAction = async (reason?: string) => {
+    if (!actionConfig || !id) return;
+    try {
+      if (actionConfig.actionType === 'resolve_dispute') {
+        await AdminService.transitionDispute(id, {
+          status: 'RESOLVED',
+          resolution: reason || 'Resolved via admin console',
+          internalNotes: internalNote || undefined,
+        });
+      } else if (actionConfig.actionType === 'escalate_dispute') {
+        await AdminService.transitionDispute(id, {
+          status: 'UNDER_REVIEW',
+          internalNotes: reason || internalNote || 'Escalated by admin',
+        });
+      }
+      setActionConfig(null);
+      await loadDispute();
+    } catch (err) {
+      console.error('Failed to transition dispute:', err);
+    }
+  };
+
+  const customerName = dispute?.openedBy?.fullName || 'Customer';
+  const providerName = dispute?.booking?.provider?.user?.fullName || 'Provider';
+  const amountDisputed = dispute?.amountInvolvedPaise ? `₹${dispute.amountInvolvedPaise / 100}` : 'Standard Hold';
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-neutral-500">Loading dispute dossier...</div>;
+  }
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -100,7 +151,9 @@ export const AdminDisputeDetailPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-neutral-100">
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="text-lg font-bold text-neutral-900">Service Dispute Dossier</h2>
+              <h2 className="text-lg font-bold text-neutral-900">
+                {dispute?.category ? `Service Dispute: ${dispute.category.replace('_', ' ')}` : 'Service Dispute Dossier'}
+              </h2>
               <DisputePriorityBadge priority={priority} />
               <DisputeStatusBadge status={status} />
             </div>
@@ -108,7 +161,7 @@ export const AdminDisputeDetailPage: React.FC = () => {
           </div>
           <div className="text-xs text-neutral-500 flex items-center gap-1.5">
             <Clock size={14} />
-            <span>Assigned to Operations Reviewer</span>
+            <span>Assigned: {dispute?.assignedAdmin?.fullName || 'Operations Desk'}</span>
           </div>
         </div>
 
@@ -120,7 +173,7 @@ export const AdminDisputeDetailPage: React.FC = () => {
               <span>Filing Party (Customer)</span>
             </span>
             <div className="text-xs font-mono font-semibold text-neutral-800">
-              c***@customer.sevasetu.internal
+              {customerName}
             </div>
           </div>
 
@@ -130,7 +183,7 @@ export const AdminDisputeDetailPage: React.FC = () => {
               <span>Respondent (Provider)</span>
             </span>
             <div className="text-xs font-mono font-semibold text-neutral-800">
-              p***@partner.sevasetu.internal
+              {providerName}
             </div>
           </div>
 
@@ -140,7 +193,7 @@ export const AdminDisputeDetailPage: React.FC = () => {
               <span>Disputed Escrow Amount</span>
             </span>
             <div className="text-xs font-semibold text-neutral-800">
-              ₹499.00 (Funds Locked)
+              {amountDisputed}
             </div>
           </div>
         </div>
@@ -155,12 +208,12 @@ export const AdminDisputeDetailPage: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4 space-y-2 text-xs text-neutral-700">
-            <p>
-              The client reported that service completion was marked prematurely prior to full testing of repaired electrical fixtures.
-            </p>
-            <p className="text-neutral-500 pt-2 border-t border-neutral-100 text-[11px]">
-              Customer claims refund of service fee; partner claims fixture replacement was verified with customer present.
-            </p>
+            <p>{dispute?.description || 'Service complaint registered for review.'}</p>
+            {dispute?.resolution && (
+              <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded text-emerald-900">
+                <strong>Resolution Recorded:</strong> {dispute.resolution}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -197,7 +250,7 @@ export const AdminDisputeDetailPage: React.FC = () => {
           </CardHeader>
           <CardContent className="pt-4">
             <p className="text-xs text-neutral-600">
-              Communication between customer and provider prior to dispute filing is logged in platform messaging logs for evidence audit.
+              Related booking UID: {dispute?.bookingId || 'N/A'}. Messages are verified through booking-scoped channels.
             </p>
           </CardContent>
         </Card>
@@ -240,15 +293,15 @@ export const AdminDisputeDetailPage: React.FC = () => {
             <div className="flex items-start gap-3 text-xs">
               <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0" />
               <div>
-                <span className="font-semibold text-neutral-800">Investigation Initiated</span>
-                <p className="text-neutral-500 mt-0.5">Assigned to operations desk. Escrow funds frozen.</p>
+                <span className="font-semibold text-neutral-800">Status: {status.toUpperCase()}</span>
+                <p className="text-neutral-500 mt-0.5">Updated: {dispute?.updatedAt ? new Date(dispute.updatedAt).toLocaleString() : 'N/A'}</p>
               </div>
             </div>
             <div className="flex items-start gap-3 text-xs">
               <div className="w-2 h-2 rounded-full bg-neutral-300 mt-1.5 shrink-0" />
               <div>
-                <span className="font-semibold text-neutral-700">Dispute Filed by Customer</span>
-                <p className="text-neutral-500 mt-0.5">Report submitted through customer activity portal.</p>
+                <span className="font-semibold text-neutral-700">Dispute Filed</span>
+                <p className="text-neutral-500 mt-0.5">Created: {dispute?.createdAt ? new Date(dispute.createdAt).toLocaleString() : 'N/A'}</p>
               </div>
             </div>
           </div>
@@ -259,9 +312,7 @@ export const AdminDisputeDetailPage: React.FC = () => {
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
-        }}
+        onConfirm={handleConfirmAction}
       />
     </div>
   );

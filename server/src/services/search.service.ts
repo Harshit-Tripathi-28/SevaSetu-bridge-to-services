@@ -44,6 +44,7 @@ export class SearchService {
       },
       onboardingStatus: 'COMPLETED',
       isPubliclyListed: true,
+      isRestricted: false,
     };
 
     // Filter by specific catalog service or category

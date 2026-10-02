@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, ShieldAlert, CheckCircle2, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
@@ -8,18 +8,64 @@ import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
 import { DisputeStatusBadge, DisputePriorityBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
+import { AdminService } from '../../services/admin.service';
 import type { DisputeCase, AdminActionDialogConfig } from '../../types/admin';
 
 export const AdminDisputesPage: React.FC = () => {
-  const [cases] = useState<DisputeCase[]>([]);
+  const [cases, setCases] = useState<DisputeCase[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadDisputes = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const statusParam = statusFilter !== 'all' ? statusFilter.toUpperCase() : undefined;
+      const priorityParam = priorityFilter !== 'all' ? priorityFilter.toUpperCase() : undefined;
+
+      const res = await AdminService.listDisputes({
+        status: statusParam,
+        priority: priorityParam,
+      });
+
+      const mapped: DisputeCase[] = (res.disputes || []).map((d: any) => ({
+        id: d.id,
+        caseNumber: `DSP-${d.id.slice(-6).toUpperCase()}`,
+        bookingId: d.bookingId,
+        bookingRef: d.booking?.id ? `BKG-${d.booking.id.slice(-6).toUpperCase()}` : undefined,
+        serviceTitle: d.booking?.serviceTitleSnapshot || 'Service',
+        reporterRole: (d.openedBy?.role?.toLowerCase() as any) || 'customer',
+        reporterNameMasked: d.openedBy?.fullName || 'Client',
+        respondentNameMasked: d.booking?.provider?.user?.fullName || 'Service Provider',
+        category: (d.category?.toLowerCase() as any) || 'service_quality',
+        priority: (d.priority?.toLowerCase() as any) || 'medium',
+        status: (d.status?.toLowerCase() as any) || 'open',
+        issueSummary: d.description?.slice(0, 100) || 'Service dispute filed',
+        detailedDescription: d.description || '',
+        amountInvolved: d.amountInvolvedPaise ? d.amountInvolvedPaise / 100 : undefined,
+        createdAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : 'N/A',
+        updatedAt: d.updatedAt ? new Date(d.updatedAt).toLocaleDateString() : 'N/A',
+        assignedOperator: d.assignedAdmin?.fullName,
+        resolutionSummary: d.resolution,
+      }));
+
+      setCases(mapped);
+      setTotalCount(res.total || mapped.length);
+    } catch (err) {
+      console.error('Failed to load disputes:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [statusFilter, priorityFilter]);
+
+  useEffect(() => {
+    loadDisputes();
+  }, [loadDisputes]);
 
   const filters: AdminFilterConfig[] = [
     {
@@ -47,32 +93,17 @@ export const AdminDisputesPage: React.FC = () => {
         { label: 'Low', value: 'low' },
       ],
     },
-    {
-      key: 'category',
-      label: 'Dispute Category',
-      value: categoryFilter,
-      options: [
-        { label: 'All Categories', value: 'all' },
-        { label: 'Payment Issue', value: 'payment_issue' },
-        { label: 'Service Quality', value: 'service_quality' },
-        { label: 'Cancellation / Refund', value: 'cancellation_refund' },
-        { label: 'Safety & Trust', value: 'safety_trust' },
-        { label: 'Property Damage', value: 'property_damage' },
-      ],
-    },
   ];
 
   const handleFilterChange = (key: string, value: string) => {
     if (key === 'status') setStatusFilter(value);
     if (key === 'priority') setPriorityFilter(value);
-    if (key === 'category') setCategoryFilter(value);
   };
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
     setPriorityFilter('all');
-    setCategoryFilter('all');
   };
 
   const handleSort = (key: string) => {
@@ -111,6 +142,27 @@ export const AdminDisputesPage: React.FC = () => {
         reasonPlaceholder: 'State reason for managerial escalation...',
         confirmLabel: 'Escalate Case',
       });
+    }
+  };
+
+  const handleConfirmAction = async (reason?: string) => {
+    if (!actionConfig) return;
+    try {
+      if (actionConfig.actionType === 'resolve_dispute') {
+        await AdminService.transitionDispute(actionConfig.entityId, {
+          status: 'RESOLVED',
+          resolution: reason || 'Dispute resolved via admin console',
+        });
+      } else if (actionConfig.actionType === 'escalate_dispute') {
+        await AdminService.transitionDispute(actionConfig.entityId, {
+          status: 'UNDER_REVIEW',
+          internalNotes: reason || 'Escalated to senior operations review',
+        });
+      }
+      setActionConfig(null);
+      await loadDisputes();
+    } catch (err) {
+      console.error('Failed to update dispute:', err);
     }
   };
 
@@ -207,15 +259,12 @@ export const AdminDisputesPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadDisputes}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 Active Cases
+              {totalCount} Active Cases
             </Badge>
           </div>
         }
@@ -241,16 +290,14 @@ export const AdminDisputesPage: React.FC = () => {
         sortBy={sortBy}
         sortDirection={sortDirection}
         onSort={handleSort}
-        totalItems={cases.length}
+        totalItems={totalCount}
       />
 
       <AdminActionDialog
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
-        }}
+        onConfirm={handleConfirmAction}
       />
     </div>
   );

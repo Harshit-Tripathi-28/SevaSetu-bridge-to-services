@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, ShieldCheck, XCircle, FileQuestion, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
@@ -8,17 +8,53 @@ import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
 import { VerificationStatusBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
+import { AdminService } from '../../services/admin.service';
 import type { VerificationRecord, AdminActionDialogConfig } from '../../types/admin';
 
 export const AdminVerificationPage: React.FC = () => {
-  const [queue] = useState<VerificationRecord[]>([]);
+  const [queue, setQueue] = useState<VerificationRecord[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('submittedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadVerifications = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const statusParam = statusFilter !== 'all' ? statusFilter.toUpperCase() : undefined;
+      const res = await AdminService.listVerifications({ status: statusParam });
+
+      const mapped: VerificationRecord[] = (res.verifications || []).map((v: any) => ({
+        id: v.id,
+        providerId: v.providerProfileId,
+        providerName: v.providerProfile?.user?.fullName || v.providerProfile?.businessName || 'Provider',
+        emailMasked: v.providerProfile?.user?.email ? `${v.providerProfile.user.email.slice(0, 2)}***@***` : undefined,
+        phoneMasked: v.providerProfile?.user?.phone ? `${v.providerProfile.user.phone.slice(0, 3)}****${v.providerProfile.user.phone.slice(-3)}` : 'N/A',
+        tradeCategory: v.verificationType || 'General Trade',
+        experienceYears: v.providerProfile?.experienceYears || 0,
+        serviceArea: v.providerProfile?.serviceAreas?.[0]?.name || 'Standard Zone',
+        status: (v.status?.toLowerCase() as any) || 'submitted',
+        submittedAt: v.submittedAt ? new Date(v.submittedAt).toLocaleDateString() : 'N/A',
+        reviewedAt: v.reviewedAt ? new Date(v.reviewedAt).toLocaleDateString() : undefined,
+        reviewerNotes: v.reviewerNotes,
+        documents: Array.isArray(v.documents) ? v.documents : [],
+      }));
+
+      setQueue(mapped);
+      setTotalCount(res.total || mapped.length);
+    } catch (err) {
+      console.error('Failed to load verifications queue:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    loadVerifications();
+  }, [loadVerifications]);
 
   const filters: AdminFilterConfig[] = [
     {
@@ -34,29 +70,15 @@ export const AdminVerificationPage: React.FC = () => {
         { label: 'Rejected', value: 'rejected' },
       ],
     },
-    {
-      key: 'category',
-      label: 'Trade Specialty',
-      value: categoryFilter,
-      options: [
-        { label: 'All Trades', value: 'all' },
-        { label: 'Electrical', value: 'electrical' },
-        { label: 'Plumbing', value: 'plumbing' },
-        { label: 'Carpentry', value: 'carpentry' },
-        { label: 'Appliances', value: 'appliances' },
-      ],
-    },
   ];
 
   const handleFilterChange = (key: string, value: string) => {
     if (key === 'status') setStatusFilter(value);
-    if (key === 'category') setCategoryFilter(value);
   };
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
-    setCategoryFilter('all');
   };
 
   const handleSort = (key: string) => {
@@ -107,6 +129,32 @@ export const AdminVerificationPage: React.FC = () => {
         reasonPlaceholder: 'Detail missing items required for approval...',
         confirmLabel: 'Request Info',
       });
+    }
+  };
+
+  const handleConfirmAction = async (reason?: string) => {
+    if (!actionConfig) return;
+    try {
+      if (actionConfig.actionType === 'approve_verification') {
+        await AdminService.reviewVerification(actionConfig.entityId, {
+          status: 'APPROVED',
+          reviewerNotes: reason || 'Approved via admin console',
+        });
+      } else if (actionConfig.actionType === 'reject_verification') {
+        await AdminService.reviewVerification(actionConfig.entityId, {
+          status: 'REJECTED',
+          rejectionReason: reason || 'Rejected via admin console',
+        });
+      } else if (actionConfig.actionType === 'request_verification_info') {
+        await AdminService.reviewVerification(actionConfig.entityId, {
+          status: 'NEEDS_INFORMATION',
+          reviewerNotes: reason || 'Requested further information',
+        });
+      }
+      setActionConfig(null);
+      await loadVerifications();
+    } catch (err) {
+      console.error('Failed to submit verification review:', err);
     }
   };
 
@@ -209,15 +257,12 @@ export const AdminVerificationPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadVerifications}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 In Verification Queue
+              {totalCount} In Verification Queue
             </Badge>
           </div>
         }
@@ -243,16 +288,14 @@ export const AdminVerificationPage: React.FC = () => {
         sortBy={sortBy}
         sortDirection={sortDirection}
         onSort={handleSort}
-        totalItems={queue.length}
+        totalItems={totalCount}
       />
 
       <AdminActionDialog
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
-        }}
+        onConfirm={handleConfirmAction}
       />
     </div>
   );

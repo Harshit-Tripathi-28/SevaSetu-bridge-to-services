@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Clock } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -9,6 +9,7 @@ import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
 import { Alert } from '../../components/ui/Alert';
 import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
+import { AdminService } from '../../services/admin.service';
 import type { AdminServiceCategory, AdminServiceItem } from '../../types/admin';
 
 export const AdminServicesPage: React.FC = () => {
@@ -16,113 +17,66 @@ export const AdminServicesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [modalType, setModalType] = useState<'category' | 'service'>('service');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Form states for add modal structure
   const [title, setTitle] = useState('');
+  const [slug, setSlug] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [description, setDescription] = useState('');
   const [pricingModel, setPricingModel] = useState('fixed');
   const [basePrice, setBasePrice] = useState('');
   const [formSavedNotice, setFormSavedNotice] = useState(false);
 
-  // Standard service categories
-  const categories: AdminServiceCategory[] = [
-    {
-      id: 'cat-1',
-      name: 'Electrical Services',
-      slug: 'electrical',
-      description: 'Wiring, fixtures, fuse boards, switchboards, and electrical fault repair.',
-      isActive: true,
-      servicesCount: 4,
-    },
-    {
-      id: 'cat-2',
-      name: 'Plumbing Solutions',
-      slug: 'plumbing',
-      description: 'Pipe repair, tap installation, water heater setup, and drainage solutions.',
-      isActive: true,
-      servicesCount: 3,
-    },
-    {
-      id: 'cat-3',
-      name: 'Carpentry & Woodwork',
-      slug: 'carpentry',
-      description: 'Furniture assembly, hinge repairs, custom fittings, and wooden fixtures.',
-      isActive: true,
-      servicesCount: 3,
-    },
-    {
-      id: 'cat-4',
-      name: 'Home Deep Cleaning',
-      slug: 'cleaning',
-      description: 'Full house sanitization, kitchen deep clean, and bathroom scrubbing.',
-      isActive: true,
-      servicesCount: 2,
-    },
-    {
-      id: 'cat-5',
-      name: 'Appliance Repair',
-      slug: 'appliances',
-      description: 'Air conditioners, washing machines, refrigerators, and microwaves.',
-      isActive: true,
-      servicesCount: 4,
-    },
-  ];
+  const [categories, setCategories] = useState<AdminServiceCategory[]>([]);
+  const [services, setServices] = useState<AdminServiceItem[]>([]);
 
-  // Standard catalog services
-  const services: AdminServiceItem[] = [
-    {
-      id: 'srv-1',
-      categoryId: 'cat-1',
-      categoryName: 'Electrical Services',
-      title: 'Ceiling Fan Installation & Repair',
-      description: 'Mounting, balancing, capacitor replacement, and wiring.',
-      pricingModel: 'fixed',
-      basePrice: 299,
-      currency: 'INR',
-      durationMinutes: 45,
-      isActive: true,
-      bookingsCount: 0,
-    },
-    {
-      id: 'srv-2',
-      categoryId: 'cat-1',
-      categoryName: 'Electrical Services',
-      title: 'Switchboard & Socket Replacement',
-      description: 'Safety inspection, socket upgrades, and short-circuit repair.',
-      pricingModel: 'fixed',
-      basePrice: 199,
-      currency: 'INR',
-      durationMinutes: 30,
-      isActive: true,
-      bookingsCount: 0,
-    },
-    {
-      id: 'srv-3',
-      categoryId: 'cat-2',
-      categoryName: 'Plumbing Solutions',
-      title: 'Tap Leakage & Valve Repair',
-      description: 'Washer replacement, cartridge fixes, and pipe sealing.',
-      pricingModel: 'fixed',
-      basePrice: 249,
-      currency: 'INR',
-      durationMinutes: 40,
-      isActive: true,
-      bookingsCount: 0,
-    },
-    {
-      id: 'srv-4',
-      categoryId: 'cat-5',
-      categoryName: 'Appliance Repair',
-      title: 'Split AC Deep Service & Gas Check',
-      description: 'Filter foam wash, condenser coil cleaning, and cooling pressure check.',
-      pricingModel: 'fixed',
-      basePrice: 599,
-      currency: 'INR',
-      durationMinutes: 60,
-      isActive: true,
-      bookingsCount: 0,
-    },
-  ];
+  const loadCatalog = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [cats, srvsRes] = await Promise.all([
+        AdminService.listCategories(),
+        AdminService.listServices({ limit: 100 }),
+      ]);
+
+      const mappedCats: AdminServiceCategory[] = (cats || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        description: c.description || '',
+        isActive: c.isActive !== false,
+        servicesCount: c._count?.services || c.services?.length || 0,
+      }));
+
+      const mappedSrvs: AdminServiceItem[] = (srvsRes.services || []).map((s: any) => ({
+        id: s.id,
+        categoryId: s.categoryId,
+        categoryName: s.category?.name || 'Standard Category',
+        title: s.title,
+        description: s.description || '',
+        pricingModel: (s.pricingModel?.toLowerCase() as any) || 'fixed',
+        basePrice: s.basePricePaise ? s.basePricePaise / 100 : 0,
+        currency: 'INR',
+        durationMinutes: 45,
+        isActive: s.isActive !== false,
+        bookingsCount: s._count?.bookings || 0,
+      }));
+
+      setCategories(mappedCats);
+      setServices(mappedSrvs);
+      if (mappedCats.length > 0 && !selectedCategoryId && mappedCats[0]) {
+        setSelectedCategoryId(mappedCats[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load catalog data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedCategoryId]);
+
+  useEffect(() => {
+    loadCatalog();
+  }, [loadCatalog]);
 
   const filteredCategories = categories.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -133,6 +87,15 @@ export const AdminServicesPage: React.FC = () => {
     s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.categoryName.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleToggleService = async (serviceId: string, currentActive: boolean) => {
+    try {
+      await AdminService.setServiceActiveStatus(serviceId, !currentActive, 'Status updated via admin console');
+      await loadCatalog();
+    } catch (err) {
+      console.error('Failed to update service status:', err);
+    }
+  };
 
   // Category Table Columns
   const categoryColumns: ColumnDef<AdminServiceCategory>[] = [
@@ -171,25 +134,6 @@ export const AdminServicesPage: React.FC = () => {
         ) : (
           <Badge variant="neutral" size="sm">Inactive</Badge>
         ),
-    },
-    {
-      key: 'actions',
-      header: 'Controls',
-      headerClassName: 'text-right',
-      className: 'text-right',
-      render: () => (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setModalType('category');
-            setIsAddModalOpen(true);
-          }}
-          className="text-xs h-7 px-2"
-        >
-          Edit
-        </Button>
-      ),
     },
   ];
 
@@ -250,30 +194,52 @@ export const AdminServicesPage: React.FC = () => {
       header: 'Controls',
       headerClassName: 'text-right',
       className: 'text-right',
-      render: () => (
+      render: (srv) => (
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            setModalType('service');
-            setIsAddModalOpen(true);
-          }}
+          onClick={() => handleToggleService(srv.id, srv.isActive)}
           className="text-xs h-7 px-2"
         >
-          Edit
+          {srv.isActive ? 'Deactivate' : 'Activate'}
         </Button>
       ),
     },
   ];
 
-  const handleSaveModal = () => {
-    setFormSavedNotice(true);
-    setTimeout(() => {
-      setFormSavedNotice(false);
-      setIsAddModalOpen(false);
-      setTitle('');
-      setDescription('');
-    }, 1200);
+  const handleSaveModal = async () => {
+    try {
+      if (modalType === 'category') {
+        const catSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        await AdminService.createCategory({
+          name: title,
+          slug: catSlug,
+          description,
+        });
+      } else {
+        const srvSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        await AdminService.createService({
+          categoryId: selectedCategoryId || (categories[0]?.id || ''),
+          title,
+          slug: srvSlug,
+          description,
+          pricingModel: pricingModel.toUpperCase(),
+          basePrice: Math.round((parseFloat(basePrice) || 0) * 100),
+        });
+      }
+      setFormSavedNotice(true);
+      await loadCatalog();
+      setTimeout(() => {
+        setFormSavedNotice(false);
+        setIsAddModalOpen(false);
+        setTitle('');
+        setSlug('');
+        setDescription('');
+        setBasePrice('');
+      }, 800);
+    } catch (err) {
+      console.error('Failed to create catalog item:', err);
+    }
   };
 
   return (
@@ -359,6 +325,7 @@ export const AdminServicesPage: React.FC = () => {
           columns={categoryColumns}
           data={filteredCategories}
           keyExtractor={(c) => c.id}
+          isLoading={isLoading}
           totalItems={filteredCategories.length}
         />
       ) : (
@@ -366,6 +333,7 @@ export const AdminServicesPage: React.FC = () => {
           columns={serviceColumns}
           data={filteredServices}
           keyExtractor={(s) => s.id}
+          isLoading={isLoading}
           totalItems={filteredServices.length}
         />
       )}
@@ -378,8 +346,8 @@ export const AdminServicesPage: React.FC = () => {
         size="md"
       >
         <div className="space-y-4">
-          <Alert variant="info" title="Catalog Governance Notice">
-            This catalog editor runs within the Part 7 UI framework. Structural changes will sync with database schemas upon live backend mutation API integration.
+          <Alert variant="info" title="Catalog Administration">
+            Changes made here will be persisted to PostgreSQL and will govern future customer service bookings.
           </Alert>
 
           <div>
@@ -394,36 +362,62 @@ export const AdminServicesPage: React.FC = () => {
             />
           </div>
 
+          <div>
+            <label className="block text-xs font-medium text-neutral-700 mb-1">
+              Slug Identifier
+            </label>
+            <Input
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="e.g. painting-waterproofing"
+              className="text-xs"
+            />
+          </div>
+
           {modalType === 'service' && (
-            <div className="grid grid-cols-2 gap-3">
+            <>
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
-                  Pricing Model
+                  Category
                 </label>
                 <Select
-                  value={pricingModel}
-                  onChange={(e) => setPricingModel(e.target.value)}
-                  options={[
-                    { label: 'Fixed Price', value: 'fixed' },
-                    { label: 'Hourly Rate', value: 'hourly' },
-                    { label: 'Custom Quote', value: 'quote' },
-                  ]}
+                  value={selectedCategoryId}
+                  onChange={(e) => setSelectedCategoryId(e.target.value)}
+                  options={categories.map((c) => ({ label: c.name, value: c.id }))}
                   className="text-xs h-9.5"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-neutral-700 mb-1">
-                  Base Price (₹ INR)
-                </label>
-                <Input
-                  value={basePrice}
-                  onChange={(e) => setBasePrice(e.target.value)}
-                  placeholder="e.g. 299"
-                  className="text-xs"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 mb-1">
+                    Pricing Model
+                  </label>
+                  <Select
+                    value={pricingModel}
+                    onChange={(e) => setPricingModel(e.target.value)}
+                    options={[
+                      { label: 'Fixed Price', value: 'fixed' },
+                      { label: 'Hourly Rate', value: 'hourly' },
+                      { label: 'Custom Quote', value: 'quote' },
+                    ]}
+                    className="text-xs h-9.5"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 mb-1">
+                    Base Price (₹ INR)
+                  </label>
+                  <Input
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    placeholder="e.g. 299"
+                    className="text-xs"
+                  />
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           <div>
@@ -440,8 +434,8 @@ export const AdminServicesPage: React.FC = () => {
           </div>
 
           {formSavedNotice && (
-            <Alert variant="success" title="Structure Saved">
-              Catalog configuration recorded in local session state.
+            <Alert variant="success" title="Saved Successfully">
+              Catalog configuration saved to database.
             </Alert>
           )}
 

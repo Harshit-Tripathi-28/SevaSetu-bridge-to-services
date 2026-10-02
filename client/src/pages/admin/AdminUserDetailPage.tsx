@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -21,19 +21,40 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { AccountStatusBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
+import { AdminService } from '../../services/admin.service';
 import type { AdminAccountStatus, AdminActionDialogConfig } from '../../types/admin';
 
 export const AdminUserDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [status] = useState<AdminAccountStatus>('active');
+  const [userData, setUserData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadUser = useCallback(async () => {
+    if (!id) return;
+    setIsLoading(true);
+    try {
+      const data = await AdminService.getUserDetail(id);
+      setUserData(data);
+    } catch (err) {
+      console.error('Failed to load user details:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  const status: AdminAccountStatus = (userData?.status?.toLowerCase() as AdminAccountStatus) || 'active';
 
   const handleTriggerAction = (type: 'suspend' | 'restrict' | 'reactivate') => {
     if (type === 'suspend') {
       setActionConfig({
         actionType: 'suspend_user',
         title: 'Confirm User Account Suspension',
-        entityName: `User #${id}`,
+        entityName: userData?.fullName || `User #${id}`,
         entityId: id || 'N/A',
         consequenceNotice:
           'Suspending this user will revoke active login sessions, cancel open dispatch bookings, and block new requests.',
@@ -46,7 +67,7 @@ export const AdminUserDetailPage: React.FC = () => {
       setActionConfig({
         actionType: 'restrict_user',
         title: 'Restrict Account Permissions',
-        entityName: `User #${id}`,
+        entityName: userData?.fullName || `User #${id}`,
         entityId: id || 'N/A',
         consequenceNotice:
           'Restricting this account will prevent creating new service requests while review is ongoing.',
@@ -59,7 +80,7 @@ export const AdminUserDetailPage: React.FC = () => {
       setActionConfig({
         actionType: 'reactivate_user',
         title: 'Reactivate Account',
-        entityName: `User #${id}`,
+        entityName: userData?.fullName || `User #${id}`,
         entityId: id || 'N/A',
         consequenceNotice: 'This will restore standard user permissions across the platform.',
         severity: 'primary',
@@ -69,6 +90,30 @@ export const AdminUserDetailPage: React.FC = () => {
       });
     }
   };
+
+  const handleConfirmAction = async (reason?: string) => {
+    if (!actionConfig || !id) return;
+    try {
+      if (actionConfig.actionType === 'suspend_user') {
+        await AdminService.updateUserStatus(id, 'SUSPENDED', reason);
+      } else if (actionConfig.actionType === 'restrict_user') {
+        await AdminService.updateUserStatus(id, 'INACTIVE', reason);
+      } else if (actionConfig.actionType === 'reactivate_user') {
+        await AdminService.updateUserStatus(id, 'ACTIVE', reason);
+      }
+      setActionConfig(null);
+      await loadUser();
+    } catch (err) {
+      console.error('Failed to update user status:', err);
+    }
+  };
+
+  const emailMasked = userData?.email ? `${userData.email.slice(0, 2)}***@***` : 'N/A';
+  const phoneMasked = userData?.phone ? `${userData.phone.slice(0, 3)}****${userData.phone.slice(-3)}` : 'N/A';
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-neutral-500">Loading user profile...</div>;
+  }
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -87,21 +132,33 @@ export const AdminUserDetailPage: React.FC = () => {
                 Back to Users
               </Button>
             </Link>
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={<ShieldAlert size={14} />}
-              onClick={() => handleTriggerAction('restrict')}
-            >
-              Restrict
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => handleTriggerAction('suspend')}
-            >
-              Suspend User
-            </Button>
+            {status === 'active' ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<ShieldAlert size={14} />}
+                  onClick={() => handleTriggerAction('restrict')}
+                >
+                  Restrict
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleTriggerAction('suspend')}
+                >
+                  Suspend User
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleTriggerAction('reactivate')}
+              >
+                Reactivate Account
+              </Button>
+            )}
           </div>
         }
       />
@@ -115,7 +172,7 @@ export const AdminUserDetailPage: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h2 className="text-lg font-bold text-neutral-900">Platform User Reference</h2>
+                <h2 className="text-lg font-bold text-neutral-900">{userData?.fullName || 'Platform User Reference'}</h2>
                 <AccountStatusBadge status={status} />
               </div>
               <p className="text-xs text-neutral-500 font-mono mt-0.5">UID: {id || 'USR-PENDING'}</p>
@@ -123,7 +180,7 @@ export const AdminUserDetailPage: React.FC = () => {
           </div>
           <div className="text-xs text-neutral-500 flex items-center gap-1.5">
             <Clock size={14} />
-            <span>Registered via standard onboarding flow</span>
+            <span>Registered on {userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString() : 'N/A'}</span>
           </div>
         </div>
 
@@ -135,7 +192,7 @@ export const AdminUserDetailPage: React.FC = () => {
               <span>Masked Email</span>
             </span>
             <div className="text-xs font-mono font-semibold text-neutral-800">
-              u***@client.sevasetu.internal
+              {emailMasked}
             </div>
           </div>
 
@@ -145,7 +202,7 @@ export const AdminUserDetailPage: React.FC = () => {
               <span>Masked Telephone</span>
             </span>
             <div className="text-xs font-mono font-semibold text-neutral-800">
-              +91 &bull;&bull;&bull;&bull;&bull; &bull;&bull;789
+              {phoneMasked}
             </div>
           </div>
 
@@ -155,7 +212,7 @@ export const AdminUserDetailPage: React.FC = () => {
               <span>Location Region</span>
             </span>
             <div className="text-xs font-semibold text-neutral-800">
-              Active Dispatch Zone
+              {userData?.addresses?.[0]?.city || 'Active Dispatch Zone'}
             </div>
           </div>
         </div>
@@ -165,7 +222,7 @@ export const AdminUserDetailPage: React.FC = () => {
             <Lock size={13} className="text-neutral-400" />
             <span>PII is protected by administrative privacy protocols</span>
           </span>
-          <Badge variant="neutral" size="sm">Standard Role</Badge>
+          <Badge variant="neutral" size="sm">{userData?.role || 'Standard Role'}</Badge>
         </div>
       </Card>
 
@@ -180,11 +237,11 @@ export const AdminUserDetailPage: React.FC = () => {
                 Service Booking History
               </CardTitle>
             </div>
-            <span className="text-xs text-neutral-400">0 bookings</span>
+            <span className="text-xs text-neutral-400">{userData?._count?.customerBookings || 0} bookings</span>
           </CardHeader>
           <CardContent className="pt-4">
             <div className="py-8 text-center text-xs text-neutral-500">
-              No booking records associated with this account.
+              {userData?._count?.customerBookings ? `${userData._count.customerBookings} bookings recorded for this customer.` : 'No booking records associated with this account.'}
             </div>
           </CardContent>
         </Card>
@@ -198,11 +255,11 @@ export const AdminUserDetailPage: React.FC = () => {
                 Transaction References
               </CardTitle>
             </div>
-            <span className="text-xs text-neutral-400">0 transactions</span>
+            <span className="text-xs text-neutral-400">Escrow Protected</span>
           </CardHeader>
           <CardContent className="pt-4">
             <div className="py-8 text-center text-xs text-neutral-500">
-              No settled or pending transaction records on file.
+              Transactions are settled through server-authoritative payment workflows.
             </div>
           </CardContent>
         </Card>
@@ -216,11 +273,11 @@ export const AdminUserDetailPage: React.FC = () => {
                 Trust &amp; Safety Cases
               </CardTitle>
             </div>
-            <span className="text-xs text-neutral-400">0 reports</span>
+            <span className="text-xs text-neutral-400">{userData?._count?.reportsReceived || 0} reports</span>
           </CardHeader>
           <CardContent className="pt-4">
             <div className="py-8 text-center text-xs text-neutral-500">
-              No active or historical dispute cases associated with this user.
+              {userData?._count?.reportsReceived ? `${userData._count.reportsReceived} reports filed involving this account.` : 'No active or historical dispute cases associated with this user.'}
             </div>
           </CardContent>
         </Card>
@@ -234,11 +291,11 @@ export const AdminUserDetailPage: React.FC = () => {
                 Support History
               </CardTitle>
             </div>
-            <span className="text-xs text-neutral-400">0 tickets</span>
+            <span className="text-xs text-neutral-400">{userData?._count?.supportTickets || 0} tickets</span>
           </CardHeader>
           <CardContent className="pt-4">
             <div className="py-8 text-center text-xs text-neutral-500">
-              No support inquiries submitted by this user.
+              {userData?._count?.supportTickets ? `${userData._count.supportTickets} support tickets registered.` : 'No support inquiries submitted by this user.'}
             </div>
           </CardContent>
         </Card>
@@ -257,7 +314,7 @@ export const AdminUserDetailPage: React.FC = () => {
         </CardHeader>
         <CardContent className="pt-4">
           <div className="py-8 text-center text-xs text-neutral-500">
-            No administrative mutations or audit events recorded for this user ID.
+            Administrative mutations and audit events are recorded in PostgreSQL audit logs.
           </div>
         </CardContent>
       </Card>
@@ -267,9 +324,7 @@ export const AdminUserDetailPage: React.FC = () => {
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
-        }}
+        onConfirm={handleConfirmAction}
       />
     </div>
   );

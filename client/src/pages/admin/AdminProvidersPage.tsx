@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, ShieldAlert, UserX, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
@@ -8,19 +8,63 @@ import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
 import { AccountStatusBadge, VerificationStatusBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
+import { AdminService } from '../../services/admin.service';
 import type { AdminProviderItem, AdminActionDialogConfig } from '../../types/admin';
 
 export const AdminProvidersPage: React.FC = () => {
-  const [providers] = useState<AdminProviderItem[]>([]);
+  const [providers, setProviders] = useState<AdminProviderItem[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [verificationFilter, setVerificationFilter] = useState<string>('all');
   const [accountFilter, setAccountFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('joinedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadProviders = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const isRestricted = accountFilter === 'restricted' ? true : accountFilter === 'active' ? false : undefined;
+      const isVerified = verificationFilter === 'approved' ? true : verificationFilter === 'rejected' ? false : undefined;
+
+      const res = await AdminService.listProviders({
+        search: searchQuery || undefined,
+        isRestricted,
+        isVerified,
+      });
+
+      const mapped: AdminProviderItem[] = (res.providers || []).map((p: any) => ({
+        id: p.id,
+        fullName: p.user?.fullName || p.businessName || 'Provider',
+        phoneMasked: p.user?.phone ? `${p.user.phone.slice(0, 3)}****${p.user.phone.slice(-3)}` : 'N/A',
+        emailMasked: p.user?.email ? `${p.user.email.slice(0, 2)}***@***` : undefined,
+        categoryNames: p.skills?.map((s: any) => s.category?.name || s.name || 'Trade') || [],
+        skills: p.skills?.map((s: any) => s.name) || [],
+        experienceYears: p.experienceYears || 0,
+        verificationStatus: p.isVerified ? 'verified' : 'under_review',
+        accountStatus: p.isRestricted ? 'restricted' : (p.user?.status?.toLowerCase() || 'active'),
+        averageRating: p.rating || 0,
+        totalReviews: p.reviewCount || 0,
+        completedJobsCount: p._count?.bookings || 0,
+        serviceArea: p.serviceAreas?.[0]?.name || 'Standard Zone',
+        joinedAt: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : 'N/A',
+        activeDisputesCount: 0,
+      }));
+
+      setProviders(mapped);
+      setTotalCount(res.total || mapped.length);
+    } catch (err) {
+      console.error('Failed to load providers:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery, verificationFilter, accountFilter]);
+
+  useEffect(() => {
+    loadProviders();
+  }, [loadProviders]);
 
   const filters: AdminFilterConfig[] = [
     {
@@ -31,9 +75,6 @@ export const AdminProvidersPage: React.FC = () => {
         { label: 'All Verifications', value: 'all' },
         { label: 'Approved', value: 'approved' },
         { label: 'Under Review', value: 'under_review' },
-        { label: 'Submitted', value: 'submitted' },
-        { label: 'Needs Information', value: 'needs_information' },
-        { label: 'Rejected', value: 'rejected' },
       ],
     },
     {
@@ -44,21 +85,6 @@ export const AdminProvidersPage: React.FC = () => {
         { label: 'All Accounts', value: 'all' },
         { label: 'Active', value: 'active' },
         { label: 'Restricted', value: 'restricted' },
-        { label: 'Suspended', value: 'suspended' },
-        { label: 'Under Review', value: 'under_review' },
-      ],
-    },
-    {
-      key: 'category',
-      label: 'Service Category',
-      value: categoryFilter,
-      options: [
-        { label: 'All Categories', value: 'all' },
-        { label: 'Electrician', value: 'electrician' },
-        { label: 'Plumbing', value: 'plumbing' },
-        { label: 'Carpentry', value: 'carpentry' },
-        { label: 'Home Cleaning', value: 'cleaning' },
-        { label: 'Appliance Repair', value: 'appliances' },
       ],
     },
   ];
@@ -66,14 +92,12 @@ export const AdminProvidersPage: React.FC = () => {
   const handleFilterChange = (key: string, value: string) => {
     if (key === 'verification') setVerificationFilter(value);
     if (key === 'account') setAccountFilter(value);
-    if (key === 'category') setCategoryFilter(value);
   };
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setVerificationFilter('all');
     setAccountFilter('all');
-    setCategoryFilter('all');
   };
 
   const handleSort = (key: string) => {
@@ -112,6 +136,21 @@ export const AdminProvidersPage: React.FC = () => {
         reasonPlaceholder: 'State reason for partner dispatch hold...',
         confirmLabel: 'Apply Restriction',
       });
+    }
+  };
+
+  const handleConfirmAction = async (reason?: string) => {
+    if (!actionConfig) return;
+    try {
+      if (actionConfig.actionType === 'restrict_provider') {
+        await AdminService.restrictProvider(actionConfig.entityId, true, reason || 'Restricted via admin console');
+      } else if (actionConfig.actionType === 'suspend_provider') {
+        await AdminService.restrictProvider(actionConfig.entityId, true, reason || 'Suspended via admin console');
+      }
+      setActionConfig(null);
+      await loadProviders();
+    } catch (err) {
+      console.error('Failed to execute admin action:', err);
     }
   };
 
@@ -215,15 +254,12 @@ export const AdminProvidersPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadProviders}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 Service Partners
+              {totalCount} Service Partners
             </Badge>
           </div>
         }
@@ -260,16 +296,14 @@ export const AdminProvidersPage: React.FC = () => {
             prev.length === providers.length ? [] : providers.map((p) => p.id)
           )
         }
-        totalItems={providers.length}
+        totalItems={totalCount}
       />
 
       <AdminActionDialog
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
-        }}
+        onConfirm={handleConfirmAction}
       />
     </div>
   );

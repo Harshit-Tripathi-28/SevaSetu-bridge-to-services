@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Eye, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -8,16 +8,59 @@ import { Textarea } from '../../components/ui/Textarea';
 import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
 import { SupportStatusBadge, DisputePriorityBadge } from '../../components/admin/AdminStatusBadge';
+import { AdminService } from '../../services/admin.service';
 import type { SupportTicket } from '../../types/admin';
 
 export const AdminSupportPage: React.FC = () => {
-  const [tickets] = useState<SupportTicket[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [internalReply, setInternalReply] = useState<string>('');
+
+  const loadTickets = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const statusParam = statusFilter !== 'all' ? statusFilter.toUpperCase() : undefined;
+      const priorityParam = priorityFilter !== 'all' ? priorityFilter.toUpperCase() : undefined;
+
+      const res = await AdminService.listSupportTickets({
+        status: statusParam,
+        priority: priorityParam,
+      });
+
+      const mapped: SupportTicket[] = (res.tickets || []).map((t: any) => ({
+        id: t.id,
+        ticketNumber: `TCK-${t.id.slice(-6).toUpperCase()}`,
+        requesterNameMasked: t.requester?.fullName || 'Requester',
+        requesterRole: (t.requester?.role?.toLowerCase() as any) || 'customer',
+        contactEmailMasked: t.requester?.email ? `${t.requester.email.slice(0, 2)}***@***` : undefined,
+        category: t.category || 'General',
+        subject: t.subject,
+        description: t.description,
+        status: (t.status?.toLowerCase() as any) || 'open',
+        priority: (t.priority?.toLowerCase() as any) || 'medium',
+        createdAt: t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'N/A',
+        lastUpdated: t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : 'N/A',
+        assignedAgent: t.assignedAdmin?.fullName,
+        bookingReference: t.bookingId ? `BKG-${t.bookingId.slice(-6).toUpperCase()}` : undefined,
+      }));
+
+      setTickets(mapped);
+      setTotalCount(res.total || mapped.length);
+    } catch (err) {
+      console.error('Failed to load support tickets:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [statusFilter, priorityFilter]);
+
+  useEffect(() => {
+    loadTickets();
+  }, [loadTickets]);
 
   const filters: AdminFilterConfig[] = [
     {
@@ -55,6 +98,21 @@ export const AdminSupportPage: React.FC = () => {
     setSearchQuery('');
     setStatusFilter('all');
     setPriorityFilter('all');
+  };
+
+  const handleUpdateTicket = async (newStatus?: string) => {
+    if (!selectedTicket) return;
+    try {
+      await AdminService.updateSupportTicket(selectedTicket.id, {
+        status: (newStatus?.toUpperCase() as any) || undefined,
+        internalNotes: internalReply || undefined,
+      });
+      setSelectedTicket(null);
+      setInternalReply('');
+      await loadTickets();
+    } catch (err) {
+      console.error('Failed to update ticket:', err);
+    }
   };
 
   const columns: ColumnDef<SupportTicket>[] = [
@@ -133,15 +191,12 @@ export const AdminSupportPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadTickets}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 Active Tickets
+              {totalCount} Active Tickets
             </Badge>
           </div>
         }
@@ -164,7 +219,7 @@ export const AdminSupportPage: React.FC = () => {
         isLoading={isLoading}
         emptyTitle="Support Inbox Cleared"
         emptyDescription="There are currently no open support requests awaiting response from operations."
-        totalItems={tickets.length}
+        totalItems={totalCount}
       />
 
       {/* Ticket Inspection Modal Structure */}
@@ -204,20 +259,35 @@ export const AdminSupportPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-200">
-              <Button variant="outline" size="sm" onClick={() => setSelectedTicket(null)}>
-                Close
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  setSelectedTicket(null);
-                  setInternalReply('');
-                }}
-              >
-                Save &amp; Update
-              </Button>
+            <div className="flex items-center justify-between pt-3 border-t border-neutral-200">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleUpdateTicket('resolved')}
+                >
+                  Mark Resolved
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleUpdateTicket('closed')}
+                >
+                  Close Ticket
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSelectedTicket(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleUpdateTicket()}
+                >
+                  Save Notes
+                </Button>
+              </div>
             </div>
           </div>
         </Modal>

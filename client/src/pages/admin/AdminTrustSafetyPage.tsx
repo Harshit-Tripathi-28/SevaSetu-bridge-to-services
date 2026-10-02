@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -16,15 +16,60 @@ import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
 import { TrustSafetyBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
+import { AdminService } from '../../services/admin.service';
 import type { TrustSafetyCase, AdminActionDialogConfig } from '../../types/admin';
 
 export const AdminTrustSafetyPage: React.FC = () => {
-  const [cases] = useState<TrustSafetyCase[]>([]);
+  const [cases, setCases] = useState<TrustSafetyCase[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [metrics, setMetrics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadCases = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const statusParam = statusFilter !== 'all' ? statusFilter.toUpperCase() : undefined;
+      const severityParam = severityFilter !== 'all' ? severityFilter.toUpperCase() : undefined;
+
+      const [casesRes, metricsRes] = await Promise.all([
+        AdminService.listTrustSafetyCases({
+          status: statusParam,
+          severity: severityParam,
+        }),
+        AdminService.getDashboardMetrics(),
+      ]);
+
+      const mapped: TrustSafetyCase[] = (casesRes.cases || []).map((c: any) => ({
+        id: c.id,
+        caseReference: `TSC-${c.id.slice(-6).toUpperCase()}`,
+        entityType: (c.entityType?.toLowerCase() as any) || 'customer',
+        entityId: c.relatedUserId || c.relatedProviderId || c.relatedBookingId || 'N/A',
+        entityNameMasked: c.relatedUser?.fullName || c.relatedProvider?.businessName || 'Entity',
+        riskSignal: c.triggerReason || 'Platform Safety Alert',
+        signalSeverity: (c.severity?.toLowerCase() as any) || 'medium',
+        status: (c.status?.toLowerCase() as any) || 'flagged',
+        flaggedAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString() : 'N/A',
+        assignedInvestigator: c.assignedAdmin?.fullName,
+        investigationNotes: c.internalNotes,
+      }));
+
+      setCases(mapped);
+      setTotalCount(casesRes.total || mapped.length);
+      setMetrics(metricsRes);
+    } catch (err) {
+      console.error('Failed to load trust & safety cases:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [statusFilter, severityFilter]);
+
+  useEffect(() => {
+    loadCases();
+  }, [loadCases]);
 
   const filters: AdminFilterConfig[] = [
     {
@@ -70,7 +115,7 @@ export const AdminTrustSafetyPage: React.FC = () => {
         actionType: 'reactivate_user',
         title: 'Clear Risk Flag & Restore Standing',
         entityName: c.entityNameMasked,
-        entityId: c.entityId,
+        entityId: c.id,
         consequenceNotice:
           'Clearing removes the trust warning and acknowledges satisfactory review by safety operators.',
         severity: 'primary',
@@ -83,7 +128,7 @@ export const AdminTrustSafetyPage: React.FC = () => {
         actionType: 'restrict_user',
         title: 'Apply Preventative Account Restriction',
         entityName: c.entityNameMasked,
-        entityId: c.entityId,
+        entityId: c.id,
         consequenceNotice:
           'Restricts dispatch access and request creation while active investigation is completed.',
         severity: 'destructive',
@@ -96,7 +141,7 @@ export const AdminTrustSafetyPage: React.FC = () => {
         actionType: 'escalate_dispute',
         title: 'Escalate to Safety & Compliance Directorate',
         entityName: c.entityNameMasked,
-        entityId: c.entityId,
+        entityId: c.id,
         consequenceNotice:
           'Escalating transfers this safety case to senior platform risk officers.',
         severity: 'warning',
@@ -104,6 +149,32 @@ export const AdminTrustSafetyPage: React.FC = () => {
         reasonPlaceholder: 'State reason for executive risk escalation...',
         confirmLabel: 'Escalate Case',
       });
+    }
+  };
+
+  const handleConfirmAction = async (reason?: string) => {
+    if (!actionConfig) return;
+    try {
+      if (actionConfig.actionType === 'reactivate_user') {
+        await AdminService.updateTrustSafetyCase(actionConfig.entityId, {
+          status: 'CLEARED',
+          resolution: reason || 'Cleared by safety officer',
+        });
+      } else if (actionConfig.actionType === 'restrict_user') {
+        await AdminService.updateTrustSafetyCase(actionConfig.entityId, {
+          status: 'RESTRICTED',
+          internalNotes: reason || 'Restricted under trust policy',
+        });
+      } else {
+        await AdminService.updateTrustSafetyCase(actionConfig.entityId, {
+          status: 'ESCALATED',
+          internalNotes: reason || 'Escalated to risk officer',
+        });
+      }
+      setActionConfig(null);
+      await loadCases();
+    } catch (err) {
+      console.error('Failed to update trust & safety case:', err);
     }
   };
 
@@ -202,15 +273,12 @@ export const AdminTrustSafetyPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadCases}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 Active Risk Flags
+              {totalCount} Active Risk Flags
             </Badge>
           </div>
         }
@@ -225,7 +293,7 @@ export const AdminTrustSafetyPage: React.FC = () => {
             </span>
             <CheckCircle size={16} className="text-amber-500" />
           </div>
-          <div className="text-xl font-bold text-neutral-900 mt-2">0</div>
+          <div className="text-xl font-bold text-neutral-900 mt-2">{metrics?.pendingVerifications ?? 0}</div>
           <p className="text-[11px] text-neutral-400 mt-1">Provider dossiers pending</p>
         </Card>
 
@@ -236,8 +304,8 @@ export const AdminTrustSafetyPage: React.FC = () => {
             </span>
             <AlertTriangle size={16} className="text-red-500" />
           </div>
-          <div className="text-xl font-bold text-neutral-900 mt-2">0</div>
-          <p className="text-[11px] text-neutral-400 mt-1">Escrow funds locked</p>
+          <div className="text-xl font-bold text-neutral-900 mt-2">{metrics?.openDisputes ?? 0}</div>
+          <p className="text-[11px] text-neutral-400 mt-1">Active customer disputes</p>
         </Card>
 
         <Card variant="default" padding="md" className="bg-white">
@@ -247,19 +315,19 @@ export const AdminTrustSafetyPage: React.FC = () => {
             </span>
             <ShieldAlert size={16} className="text-orange-500" />
           </div>
-          <div className="text-xl font-bold text-neutral-900 mt-2">0</div>
+          <div className="text-xl font-bold text-neutral-900 mt-2">{totalCount}</div>
           <p className="text-[11px] text-neutral-400 mt-1">Accounts flagged</p>
         </Card>
 
         <Card variant="default" padding="md" className="bg-white">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-              Account Holds
+              Open Support Inquiries
             </span>
             <Lock size={16} className="text-neutral-500" />
           </div>
-          <div className="text-xl font-bold text-neutral-900 mt-2">0</div>
-          <p className="text-[11px] text-neutral-400 mt-1">Restricted permissions</p>
+          <div className="text-xl font-bold text-neutral-900 mt-2">{metrics?.openSupportTickets ?? 0}</div>
+          <p className="text-[11px] text-neutral-400 mt-1">Awaiting operations desk</p>
         </Card>
       </div>
 
@@ -285,7 +353,7 @@ export const AdminTrustSafetyPage: React.FC = () => {
           isLoading={isLoading}
           emptyTitle="Risk Signals Clean"
           emptyDescription="There are currently no suspicious accounts or fraud signals detected across the platform."
-          totalItems={cases.length}
+          totalItems={totalCount}
         />
       </div>
 
@@ -293,9 +361,7 @@ export const AdminTrustSafetyPage: React.FC = () => {
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
-        }}
+        onConfirm={handleConfirmAction}
       />
     </div>
   );

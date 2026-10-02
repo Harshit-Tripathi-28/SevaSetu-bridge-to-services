@@ -11,7 +11,7 @@ export const BOOKING_TRANSITION_MAP: Record<BookingStatus, TransitionRule> = {
     allowedActors: {
       ACCEPTED: ['PROVIDER'],
       DECLINED: ['PROVIDER'],
-      CANCELLED: ['CUSTOMER', 'PROVIDER'],
+      CANCELLED: ['CUSTOMER', 'PROVIDER', 'SYSTEM'],
       EXPIRED: ['SYSTEM'],
     },
   },
@@ -19,35 +19,35 @@ export const BOOKING_TRANSITION_MAP: Record<BookingStatus, TransitionRule> = {
     allowedNextStatuses: ['SCHEDULED', 'CANCELLED'],
     allowedActors: {
       SCHEDULED: ['PROVIDER', 'CUSTOMER', 'SYSTEM'],
-      CANCELLED: ['CUSTOMER', 'PROVIDER'],
+      CANCELLED: ['CUSTOMER', 'PROVIDER', 'SYSTEM'],
     },
   },
   SCHEDULED: {
     allowedNextStatuses: ['ON_THE_WAY', 'CANCELLED'],
     allowedActors: {
       ON_THE_WAY: ['PROVIDER'],
-      CANCELLED: ['CUSTOMER', 'PROVIDER'],
+      CANCELLED: ['CUSTOMER', 'PROVIDER', 'SYSTEM'],
     },
   },
   ON_THE_WAY: {
     allowedNextStatuses: ['ARRIVED', 'CANCELLED'],
     allowedActors: {
       ARRIVED: ['PROVIDER'],
-      CANCELLED: ['CUSTOMER', 'PROVIDER'],
+      CANCELLED: ['CUSTOMER', 'PROVIDER', 'SYSTEM'],
     },
   },
   ARRIVED: {
     allowedNextStatuses: ['IN_PROGRESS', 'CANCELLED'],
     allowedActors: {
       IN_PROGRESS: ['PROVIDER'],
-      CANCELLED: ['CUSTOMER', 'PROVIDER'],
+      CANCELLED: ['CUSTOMER', 'PROVIDER', 'SYSTEM'],
     },
   },
   IN_PROGRESS: {
     allowedNextStatuses: ['COMPLETED', 'CANCELLED'],
     allowedActors: {
       COMPLETED: ['PROVIDER'],
-      CANCELLED: ['PROVIDER'],
+      CANCELLED: ['PROVIDER', 'SYSTEM'],
     },
   },
   COMPLETED: {

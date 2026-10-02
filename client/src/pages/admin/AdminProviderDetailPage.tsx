@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -21,20 +21,48 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { AccountStatusBadge, VerificationStatusBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
+import { AdminService } from '../../services/admin.service';
 import type { AdminAccountStatus, VerificationState, AdminActionDialogConfig } from '../../types/admin';
 
 export const AdminProviderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [accountStatus] = useState<AdminAccountStatus>('active');
-  const [verificationStatus] = useState<VerificationState>('submitted');
+  const [provider, setProvider] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadProvider = useCallback(async () => {
+    if (!id) return;
+    setIsLoading(true);
+    try {
+      const data = await AdminService.getProviderDetail(id);
+      setProvider(data);
+    } catch (err) {
+      console.error('Failed to load provider detail:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadProvider();
+  }, [loadProvider]);
+
+  const accountStatus: AdminAccountStatus = provider?.isRestricted
+    ? 'restricted'
+    : provider?.user?.status?.toLowerCase() === 'suspended'
+    ? 'suspended'
+    : 'active';
+
+  const verificationStatus: VerificationState = provider?.isVerified
+    ? 'approved'
+    : provider?.verificationRecords?.[0]?.status?.toLowerCase() || 'submitted';
 
   const handleTriggerAction = (type: 'verify' | 'restrict' | 'suspend' | 'request_info') => {
     if (type === 'verify') {
       setActionConfig({
         actionType: 'approve_verification',
         title: 'Approve Partner Verification & Onboarding',
-        entityName: `Provider #${id}`,
+        entityName: provider?.user?.fullName || `Provider #${id}`,
         entityId: id || 'N/A',
         consequenceNotice:
           'Approving verification will officially activate this partner profile, granting visibility in search results and permitting job assignments.',
@@ -46,7 +74,7 @@ export const AdminProviderDetailPage: React.FC = () => {
       setActionConfig({
         actionType: 'restrict_provider',
         title: 'Restrict Partner Dispatch Access',
-        entityName: `Provider #${id}`,
+        entityName: provider?.user?.fullName || `Provider #${id}`,
         entityId: id || 'N/A',
         consequenceNotice:
           'Restricting this partner will temporarily hold new customer job requests while review is ongoing.',
@@ -59,7 +87,7 @@ export const AdminProviderDetailPage: React.FC = () => {
       setActionConfig({
         actionType: 'suspend_provider',
         title: 'Confirm Provider Suspension',
-        entityName: `Provider #${id}`,
+        entityName: provider?.user?.fullName || `Provider #${id}`,
         entityId: id || 'N/A',
         consequenceNotice:
           'Suspending this provider will immediately cancel all pending bookings and block console access.',
@@ -72,7 +100,7 @@ export const AdminProviderDetailPage: React.FC = () => {
       setActionConfig({
         actionType: 'request_verification_info',
         title: 'Request Missing Verification Documents',
-        entityName: `Provider #${id}`,
+        entityName: provider?.user?.fullName || `Provider #${id}`,
         entityId: id || 'N/A',
         consequenceNotice:
           'A formal inquiry notification will be routed to the provider requesting supplementary documentation.',
@@ -83,6 +111,39 @@ export const AdminProviderDetailPage: React.FC = () => {
       });
     }
   };
+
+  const handleConfirmAction = async (reason?: string) => {
+    if (!actionConfig || !id) return;
+    try {
+      if (actionConfig.actionType === 'restrict_provider') {
+        await AdminService.restrictProvider(id, true, reason || 'Restricted via admin console');
+      } else if (actionConfig.actionType === 'suspend_provider') {
+        await AdminService.restrictProvider(id, true, reason || 'Suspended via admin console');
+        if (provider?.userId) {
+          await AdminService.updateUserStatus(provider.userId, 'SUSPENDED', reason);
+        }
+      } else if (actionConfig.actionType === 'approve_verification' && provider?.verificationRecords?.[0]?.id) {
+        await AdminService.reviewVerification(provider.verificationRecords[0].id, {
+          status: 'APPROVED',
+          reviewerNotes: 'Approved via admin console',
+        });
+      }
+      setActionConfig(null);
+      await loadProvider();
+    } catch (err) {
+      console.error('Failed to execute admin action:', err);
+    }
+  };
+
+  const phoneMasked = provider?.user?.phone
+    ? `${provider.user.phone.slice(0, 3)}****${provider.user.phone.slice(-3)}`
+    : 'N/A';
+
+  const serviceArea = provider?.serviceAreas?.[0]?.name || 'Standard Regional Zone';
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-neutral-500">Loading partner operations profile...</div>;
+  }
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -140,7 +201,9 @@ export const AdminProviderDetailPage: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h2 className="text-lg font-bold text-neutral-900">Partner Record</h2>
+                <h2 className="text-lg font-bold text-neutral-900">
+                  {provider?.user?.fullName || provider?.businessName || 'Partner Record'}
+                </h2>
                 <AccountStatusBadge status={accountStatus} />
                 <VerificationStatusBadge status={verificationStatus} />
               </div>
@@ -161,7 +224,7 @@ export const AdminProviderDetailPage: React.FC = () => {
               <span>Masked Phone</span>
             </span>
             <div className="text-xs font-mono font-semibold text-neutral-800">
-              +91 &bull;&bull;&bull;&bull;&bull; &bull;&bull;456
+              {phoneMasked}
             </div>
           </div>
 
@@ -171,7 +234,7 @@ export const AdminProviderDetailPage: React.FC = () => {
               <span>Service Area</span>
             </span>
             <div className="text-xs font-semibold text-neutral-800">
-              Active Regional Zone
+              {serviceArea}
             </div>
           </div>
 
@@ -196,12 +259,23 @@ export const AdminProviderDetailPage: React.FC = () => {
             <CardTitle className="text-sm font-bold text-neutral-900">
               Service Offerings &amp; Catalog
             </CardTitle>
-            <Badge variant="neutral" size="sm">0 Listed</Badge>
+            <Badge variant="neutral" size="sm">{provider?.services?.length || 0} Listed</Badge>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="py-8 text-center text-xs text-neutral-500">
-              No services currently published in catalog for this provider.
-            </div>
+            {provider?.services?.length ? (
+              <div className="space-y-2">
+                {provider.services.map((s: any) => (
+                  <div key={s.id} className="flex justify-between items-center text-xs py-1 border-b border-neutral-50">
+                    <span className="font-semibold text-neutral-800">{s.service?.title || s.customTitle || 'Service'}</span>
+                    <span className="text-neutral-500">₹{(s.pricePaise || 0) / 100}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-xs text-neutral-500">
+                No services currently published in catalog for this provider.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -238,7 +312,9 @@ export const AdminProviderDetailPage: React.FC = () => {
           </CardHeader>
           <CardContent className="pt-4">
             <div className="py-6 text-center text-xs text-neutral-500">
-              Pending document submission review.
+              {provider?.verificationRecords?.length
+                ? `${provider.verificationRecords.length} records on file (${provider.verificationRecords[0].status})`
+                : 'Pending document submission review.'}
             </div>
           </CardContent>
         </Card>
@@ -251,11 +327,11 @@ export const AdminProviderDetailPage: React.FC = () => {
                 Client Reviews
               </CardTitle>
             </div>
-            <span className="text-xs text-neutral-400">0 reviews</span>
+            <span className="text-xs text-neutral-400">{provider?.user?.reviews?.length || 0} reviews</span>
           </CardHeader>
           <CardContent className="pt-4">
             <div className="py-6 text-center text-xs text-neutral-500">
-              No customer ratings or reviews logged yet.
+              {provider?.rating ? `Rating: ${provider.rating} / 5 (${provider.reviewCount} verified reviews)` : 'No customer ratings or reviews logged yet.'}
             </div>
           </CardContent>
         </Card>
@@ -293,7 +369,7 @@ export const AdminProviderDetailPage: React.FC = () => {
         </CardHeader>
         <CardContent className="pt-4">
           <div className="py-8 text-center text-xs text-neutral-500">
-            No administrative status mutations recorded for this provider.
+            Audit events automatically log when operational mutations or governance actions are executed.
           </div>
         </CardContent>
       </Card>
@@ -302,9 +378,7 @@ export const AdminProviderDetailPage: React.FC = () => {
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
-        }}
+        onConfirm={handleConfirmAction}
       />
     </div>
   );

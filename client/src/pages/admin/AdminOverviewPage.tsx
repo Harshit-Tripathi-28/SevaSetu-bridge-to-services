@@ -21,30 +21,42 @@ import { Badge } from '../../components/ui/Badge';
 import { Spinner } from '../../components/ui/Spinner';
 import { Alert } from '../../components/ui/Alert';
 import { getBackendHealth } from '../../services/health.service';
-import type { HealthStatus } from '@sevasetu/shared';
+import { AdminService } from '../../services/admin.service';
+import type { HealthStatus, AdminDashboardMetrics } from '@sevasetu/shared';
 
 export const AdminOverviewPage: React.FC = () => {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [healthLoading, setHealthLoading] = useState<boolean>(true);
   const [healthError, setHealthError] = useState<string | null>(null);
 
-  const fetchHealth = async () => {
+  const [metrics, setMetrics] = useState<AdminDashboardMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState<boolean>(true);
+
+  const fetchHealthAndMetrics = async () => {
     setHealthLoading(true);
+    setMetricsLoading(true);
     setHealthError(null);
     try {
-      const response = await getBackendHealth();
-      if (response && response.data) {
-        setHealth(response.data);
+      const [healthRes, metricsData] = await Promise.all([
+        getBackendHealth().catch(() => null),
+        AdminService.getDashboardMetrics().catch(() => null),
+      ]);
+      if (healthRes && healthRes.data) {
+        setHealth(healthRes.data);
+      }
+      if (metricsData) {
+        setMetrics(metricsData);
       }
     } catch (err: unknown) {
       setHealthError(err instanceof Error ? err.message : 'Unable to connect to platform API gateway');
     } finally {
       setHealthLoading(false);
+      setMetricsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchHealth();
+    fetchHealthAndMetrics();
   }, []);
 
   return (
@@ -59,9 +71,9 @@ export const AdminOverviewPage: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              leftIcon={<RefreshCw size={14} className={healthLoading ? 'animate-spin' : ''} />}
-              onClick={fetchHealth}
-              disabled={healthLoading}
+              leftIcon={<RefreshCw size={14} className={healthLoading || metricsLoading ? 'animate-spin' : ''} />}
+              onClick={fetchHealthAndMetrics}
+              disabled={healthLoading || metricsLoading}
             >
               Refresh Telemetry
             </Button>
@@ -163,7 +175,9 @@ export const AdminOverviewPage: React.FC = () => {
               <div className="p-2 rounded-lg bg-amber-50 text-amber-700">
                 <CheckCircle size={20} />
               </div>
-              <Badge variant="neutral" size="sm">0 in queue</Badge>
+              <Badge variant={metrics && metrics.pendingVerifications > 0 ? 'warning' : 'neutral'} size="sm">
+                {metrics ? `${metrics.pendingVerifications} in queue` : '0 in queue'}
+              </Badge>
             </div>
             <div className="mt-3">
               <h4 className="text-sm font-bold text-neutral-900">Provider Verification</h4>
@@ -172,7 +186,9 @@ export const AdminOverviewPage: React.FC = () => {
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between">
-              <span className="text-[11px] text-neutral-400">Queue clean</span>
+              <span className="text-[11px] text-neutral-400">
+                {metrics && metrics.pendingVerifications > 0 ? `${metrics.pendingVerifications} awaiting action` : 'Queue clean'}
+              </span>
               <Link
                 to="/admin/verification"
                 className="text-xs font-semibold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1"
@@ -189,7 +205,9 @@ export const AdminOverviewPage: React.FC = () => {
               <div className="p-2 rounded-lg bg-red-50 text-red-700">
                 <AlertTriangle size={20} />
               </div>
-              <Badge variant="neutral" size="sm">0 open cases</Badge>
+              <Badge variant={metrics && (metrics.openDisputes + metrics.openReports) > 0 ? 'error' : 'neutral'} size="sm">
+                {metrics ? `${metrics.openDisputes + metrics.openReports} open cases` : '0 open cases'}
+              </Badge>
             </div>
             <div className="mt-3">
               <h4 className="text-sm font-bold text-neutral-900">Disputes &amp; Reports</h4>
@@ -198,7 +216,9 @@ export const AdminOverviewPage: React.FC = () => {
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between">
-              <span className="text-[11px] text-neutral-400">No active escalations</span>
+              <span className="text-[11px] text-neutral-400">
+                {metrics && (metrics.openDisputes + metrics.openReports) > 0 ? `${metrics.openDisputes} disputes, ${metrics.openReports} reports` : 'No active escalations'}
+              </span>
               <Link
                 to="/admin/reports"
                 className="text-xs font-semibold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1"
@@ -215,7 +235,9 @@ export const AdminOverviewPage: React.FC = () => {
               <div className="p-2 rounded-lg bg-blue-50 text-blue-700">
                 <LifeBuoy size={20} />
               </div>
-              <Badge variant="neutral" size="sm">0 pending</Badge>
+              <Badge variant={metrics && metrics.openSupportTickets > 0 ? 'info' : 'neutral'} size="sm">
+                {metrics ? `${metrics.openSupportTickets} pending` : '0 pending'}
+              </Badge>
             </div>
             <div className="mt-3">
               <h4 className="text-sm font-bold text-neutral-900">Support Operations</h4>
@@ -224,7 +246,9 @@ export const AdminOverviewPage: React.FC = () => {
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between">
-              <span className="text-[11px] text-neutral-400">All tickets cleared</span>
+              <span className="text-[11px] text-neutral-400">
+                {metrics && metrics.openSupportTickets > 0 ? `${metrics.openSupportTickets} tickets in queue` : 'All tickets cleared'}
+              </span>
               <Link
                 to="/admin/support"
                 className="text-xs font-semibold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1"

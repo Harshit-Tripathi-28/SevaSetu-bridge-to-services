@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sliders, Lock, Save } from 'lucide-react';
 import { PageHeader } from '../../layouts/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Alert } from '../../components/ui/Alert';
+import { AdminService } from '../../services/admin.service';
 
 export const AdminSettingsPage: React.FC = () => {
   const [maintenanceMode, setMaintenanceMode] = useState<boolean>(false);
@@ -12,10 +13,42 @@ export const AdminSettingsPage: React.FC = () => {
   const [requirePoliceVerification, setRequirePoliceVerification] = useState<boolean>(true);
   const [escrowTimeoutHours, setEscrowTimeoutHours] = useState<string>('48');
   const [savedNotice, setSavedNotice] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const handleSave = () => {
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 2000);
+  const loadSettings = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const settings = await AdminService.getSettings();
+      for (const s of settings) {
+        if (s.key === 'MAINTENANCE_MODE') setMaintenanceMode(s.value === 'true');
+        if (s.key === 'AUTO_DISPATCH') setAutoDispatch(s.value === 'true');
+        if (s.key === 'REQUIRE_VERIFICATION') setRequirePoliceVerification(s.value === 'true');
+        if (s.key === 'ESCROW_TIMEOUT_HOURS') setEscrowTimeoutHours(String(s.value ?? '48'));
+      }
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  const handleSave = async () => {
+    try {
+      await Promise.all([
+        AdminService.updateSetting('MAINTENANCE_MODE', String(maintenanceMode), 'Platform maintenance mode flag'),
+        AdminService.updateSetting('AUTO_DISPATCH', String(autoDispatch), 'Automated dispatch matching'),
+        AdminService.updateSetting('REQUIRE_VERIFICATION', String(requirePoliceVerification), 'Mandatory verification requirement'),
+        AdminService.updateSetting('ESCROW_TIMEOUT_HOURS', escrowTimeoutHours, 'Escrow release timeout window'),
+      ]);
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 2000);
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+    }
   };
 
   return (
@@ -25,7 +58,7 @@ export const AdminSettingsPage: React.FC = () => {
         description="Configure dispatch algorithm rules, escrow hold duration windows, verification compliance mandates, and operational safety flags."
         breadcrumbs={[{ label: 'Admin' }, { label: 'Settings' }]}
         actions={
-          <Button variant="primary" size="sm" leftIcon={<Save size={14} />} onClick={handleSave}>
+          <Button variant="primary" size="sm" leftIcon={<Save size={14} />} onClick={handleSave} isLoading={isLoading}>
             Save Controls
           </Button>
         }
@@ -33,7 +66,7 @@ export const AdminSettingsPage: React.FC = () => {
 
       {savedNotice && (
         <Alert variant="success" title="Settings Saved">
-          Operational preferences acknowledged in local session state.
+          Operational preferences saved to server and persisted in PostgreSQL.
         </Alert>
       )}
 

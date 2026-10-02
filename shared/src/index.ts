@@ -1213,18 +1213,30 @@ export interface CreateRebookRequestInput {
   preferences?: Record<string, unknown>;
 }
 
-export type ReportStatus = 'PENDING' | 'REVIEWED' | 'RESOLVED' | 'DISMISSED';
+export type ReportStatus =
+  | 'PENDING'
+  | 'UNDER_REVIEW'
+  | 'REVIEWED'
+  | 'RESOLVED'
+  | 'DISMISSED'
+  | 'ESCALATED';
 
 export interface ReportRecord {
   id: string;
   reporterUserId: string;
+  reporterName?: string;
   reportedUserId?: string | null;
+  reportedUserName?: string;
   bookingId?: string | null;
   messageId?: string | null;
   reviewId?: string | null;
   reason: string;
   details?: string | null;
   status: ReportStatus;
+  priority?: string;
+  assignedAdminId?: string;
+  assignedAdminName?: string;
+  resolutionNotes?: string;
   createdAt: string;
 }
 
@@ -1250,6 +1262,274 @@ export interface CreateBlockInput {
   reason?: string;
 }
 
+// ==========================================
+// Phase 7: Real Trust, Safety & Admin Types
+// ==========================================
 
+export type VerificationStatus =
+  | 'NOT_SUBMITTED'
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'NEEDS_INFORMATION';
 
+export interface VerificationDocument {
+  id: string;
+  type: string;
+  title: string;
+  fileName: string;
+  fileSizeFormatted?: string;
+  status?: 'pending' | 'verified' | 'rejected';
+  previewUrl?: string;
+  submittedAt?: string;
+}
 
+export interface VerificationRecord {
+  id: string;
+  providerProfileId: string;
+  providerName?: string;
+  emailMasked?: string;
+  phoneMasked?: string;
+  tradeCategory?: string;
+  experienceYears?: number;
+  serviceArea?: string;
+  verificationType: string;
+  status: VerificationStatus;
+  documents?: VerificationDocument[];
+  reviewerNotes?: string | null;
+  rejectionReason?: string | null;
+  reviewedByAdminId?: string | null;
+  reviewedAt?: string | null;
+  submittedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubmitVerificationInput {
+  verificationType: string;
+  documents: VerificationDocument[];
+  notes?: string;
+}
+
+export interface ReviewVerificationInput {
+  status: 'APPROVED' | 'REJECTED' | 'NEEDS_INFORMATION';
+  notes?: string;
+  reviewerNotes?: string;
+  rejectionReason?: string;
+}
+
+export type DisputeStatus =
+  | 'OPEN'
+  | 'UNDER_REVIEW'
+  | 'WAITING_FOR_INFO'
+  | 'RESOLVED'
+  | 'CLOSED'
+  | 'ESCALATED';
+
+export type DisputePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface DisputeRecord {
+  id: string;
+  caseNumber: string;
+  bookingId?: string | null;
+  bookingRef?: string;
+  serviceTitle?: string;
+  openedByUserId: string;
+  openedByName?: string;
+  respondentUserId?: string | null;
+  respondentName?: string;
+  category: string;
+  priority: DisputePriority;
+  status: DisputeStatus;
+  issueSummary: string;
+  detailedDescription: string;
+  amountInvolvedPaise?: number | null;
+  assignedAdminId?: string | null;
+  assignedAdminName?: string;
+  internalNotes?: string | null;
+  resolutionSummary?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDisputeInput {
+  bookingId?: string;
+  category: string;
+  priority?: DisputePriority;
+  issueSummary: string;
+  detailedDescription: string;
+  amountInvolvedPaise?: number;
+}
+
+export interface TransitionDisputeInput {
+  status: DisputeStatus;
+  resolutionSummary?: string;
+  resolution?: string;
+  internalNotes?: string;
+  reason?: string;
+}
+
+export type SupportTicketStatus =
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'WAITING_FOR_USER'
+  | 'RESOLVED'
+  | 'CLOSED';
+
+export type SupportTicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface SupportTicketRecord {
+  id: string;
+  ticketNumber: string;
+  requesterUserId?: string | null;
+  requesterName?: string;
+  requesterRole: string;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  category: string;
+  subject: string;
+  description: string;
+  status: SupportTicketStatus;
+  priority: SupportTicketPriority;
+  assignedAdminId?: string | null;
+  assignedAdminName?: string;
+  bookingId?: string | null;
+  bookingRef?: string;
+  internalNotes?: string | null;
+  resolutionNotes?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSupportTicketInput {
+  subject: string;
+  category: string;
+  description: string;
+  priority?: SupportTicketPriority;
+  contactEmail?: string;
+  contactPhone?: string;
+  bookingId?: string;
+  requesterRole?: string;
+}
+
+export interface UpdateSupportTicketInput {
+  status?: SupportTicketStatus;
+  priority?: SupportTicketPriority;
+  assignedAdminId?: string;
+  resolutionNotes?: string;
+  internalNotes?: string;
+}
+
+export type TrustSafetyStatus =
+  | 'FLAGGED'
+  | 'UNDER_REVIEW'
+  | 'CLEARED'
+  | 'RESTRICTED'
+  | 'ESCALATED';
+
+export type TrustSafetySeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface TrustSafetyCaseRecord {
+  id: string;
+  caseReference: string;
+  entityType: string; // "USER", "PROVIDER", "BOOKING"
+  entityId: string;
+  entityName?: string;
+  riskSignal: string;
+  severity: TrustSafetySeverity;
+  status: TrustSafetyStatus;
+  assignedAdminId?: string | null;
+  assignedAdminName?: string;
+  investigationNotes?: string | null;
+  resolutionSummary?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTrustSafetyCaseInput {
+  entityType: 'USER' | 'PROVIDER' | 'BOOKING';
+  entityId: string;
+  riskSignal: string;
+  severity?: TrustSafetySeverity;
+  investigationNotes?: string;
+}
+
+export interface UpdateTrustSafetyCaseInput {
+  status?: TrustSafetyStatus;
+  severity?: TrustSafetySeverity;
+  assignedAdminId?: string;
+  investigationNotes?: string;
+  internalNotes?: string;
+  resolutionSummary?: string;
+  resolution?: string;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  actorUserId: string;
+  actorName?: string;
+  actorRole?: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  ipAddress?: string | null;
+  createdAt: string;
+}
+
+export interface PlatformSettingRecord {
+  key: string;
+  value: unknown;
+  description?: string | null;
+  category?: string | null;
+  updatedByAdminId?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface UpdatePlatformSettingInput {
+  key: string;
+  value: unknown;
+  description?: string;
+  category?: string;
+}
+
+export interface AdminDashboardMetrics {
+  totalUsers: number;
+  activeUsers: number;
+  suspendedUsers: number;
+  totalProviders: number;
+  activeProviders: number;
+  verifiedProviders: number;
+  restrictedProviders: number;
+  totalBookings: number;
+  completedBookings: number;
+  activeBookings: number;
+  totalRevenuePaise: number;
+  platformCommissionPaise: number;
+  pendingVerifications: number;
+  openDisputes: number;
+  openReports: number;
+  openSupportTickets: number;
+  trustSafetyFlagged: number;
+}
+
+export interface UpdateUserStatusInput {
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  reason?: string;
+}
+
+export interface UpdateUserRoleInput {
+  role: 'CUSTOMER' | 'PROVIDER' | 'ADMIN';
+  reason?: string;
+}
+
+export interface RestrictProviderInput {
+  isRestricted: boolean;
+  reason?: string;
+}

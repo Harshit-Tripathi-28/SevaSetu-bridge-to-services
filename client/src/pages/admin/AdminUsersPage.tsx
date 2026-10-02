@@ -8,10 +8,11 @@ import { AdminTable, ColumnDef } from '../../components/admin/AdminTable';
 import { AdminFilterBar, AdminFilterConfig } from '../../components/admin/AdminFilterBar';
 import { AccountStatusBadge } from '../../components/admin/AdminStatusBadge';
 import { AdminActionDialog } from '../../components/admin/AdminActionDialog';
-import type { AdminUserItem, AdminActionDialogConfig } from '../../types/admin';
+import { AdminService } from '../../services/admin.service';
+import type { AdminUserItem, AdminActionDialogConfig, AdminUserRole, AdminAccountStatus } from '../../types/admin';
 
 export const AdminUsersPage: React.FC = () => {
-  const [users] = useState<AdminUserItem[]>([]);
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -20,6 +21,40 @@ export const AdminUsersPage: React.FC = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [actionConfig, setActionConfig] = useState<AdminActionDialogConfig | null>(null);
+
+  const loadUsers = async () => {
+    setIsLoading(true);
+    try {
+      const roleParam = roleFilter !== 'all' ? roleFilter.toUpperCase() : undefined;
+      const statusParam = statusFilter !== 'all' ? statusFilter.toUpperCase() : undefined;
+      const data = await AdminService.listUsers({
+        search: searchQuery || undefined,
+        role: roleParam,
+        status: statusParam,
+      });
+      const mapped: AdminUserItem[] = (data.users || []).map((u: any) => ({
+        id: u.id,
+        fullName: u.fullName || 'User',
+        emailMasked: u.email ? u.email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : '',
+        phoneMasked: u.phone ? u.phone.replace(/(\d{2})(\d{4})(\d{4})/, '$1****$3') : '—',
+        role: (u.role?.toLowerCase() || 'customer') as AdminUserRole,
+        status: (u.status?.toLowerCase() || 'active') as AdminAccountStatus,
+        createdAt: u.createdAt,
+        bookingsCount: u.activitySummary?.bookingsCount || 0,
+        reportsCount: u.activitySummary?.reportsCount || 0,
+        city: 'Kanpur',
+      }));
+      setUsers(mapped);
+    } catch {
+      // Keep empty on error
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadUsers();
+  }, [searchQuery, statusFilter, roleFilter]);
 
   // Filter definitions
   const filters: AdminFilterConfig[] = [
@@ -199,15 +234,12 @@ export const AdminUsersPage: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />}
-              onClick={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 300);
-              }}
+              onClick={loadUsers}
             >
               Refresh
             </Button>
             <Badge variant="neutral" size="md">
-              0 Total Accounts
+              {users.length} Total Accounts
             </Badge>
           </div>
         }
@@ -254,8 +286,20 @@ export const AdminUsersPage: React.FC = () => {
         isOpen={Boolean(actionConfig)}
         onClose={() => setActionConfig(null)}
         config={actionConfig}
-        onConfirm={() => {
-          // Acknowledged in local session
+        onConfirm={async (reason) => {
+          if (!actionConfig) return;
+          try {
+            if (actionConfig.actionType === 'suspend_user') {
+              await AdminService.updateUserStatus(actionConfig.entityId, 'SUSPENDED', reason);
+            } else if (actionConfig.actionType === 'restrict_user') {
+              await AdminService.updateUserStatus(actionConfig.entityId, 'SUSPENDED', reason);
+            }
+            await loadUsers();
+          } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : 'Action failed');
+          } finally {
+            setActionConfig(null);
+          }
         }}
       />
     </div>
