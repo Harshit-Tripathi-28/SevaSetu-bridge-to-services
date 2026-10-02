@@ -35,7 +35,7 @@ export class SearchService {
     if (!prisma) throw new Error('Database client unavailable');
 
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 50));
 
     // Base Prisma where clause strictly enforcing real eligibility rules
     const where: Prisma.ServiceProviderProfileWhereInput = {

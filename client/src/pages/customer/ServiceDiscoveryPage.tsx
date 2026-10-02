@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { PlusCircle, Search, RefreshCw, Layers, ArrowRight, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Search, RefreshCw, Layers, ArrowRight, Loader2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { PageHeader } from '../../layouts/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -11,10 +11,19 @@ import { Alert } from '../../components/ui/Alert';
 import { ServiceSearchFilters } from '../../components/customer/discovery/ServiceSearchFilters';
 import { ProviderResultCard } from '../../components/customer/provider/ProviderResultCard';
 import { ProviderResultSkeleton } from '../../components/customer/provider/ProviderResultSkeleton';
+import { AiServiceRequestModal } from '../../components/customer/discovery/AiServiceRequestModal';
+import { AiMatchBadge } from '../../components/customer/discovery/AiMatchBadge';
 import { catalogService } from '../../services/catalog.service';
 import { providerService } from '../../services/provider.service';
+import { AiClientService } from '../../services/ai.service';
 import { CORE_SERVICE_CATEGORIES } from '../../constants/categories';
-import type { ServiceCategory, Service as CatalogService, ProviderSearchResultItem, ProviderSearchQuery } from '@sevasetu/shared';
+import type {
+  ServiceCategory,
+  Service as CatalogService,
+  ProviderSearchResultItem,
+  ProviderSearchQuery,
+  AiMatchExplanation,
+} from '@sevasetu/shared';
 
 export const ServiceDiscoveryPage: React.FC = () => {
   const { category: paramCategory } = useParams<{ category?: string }>();
@@ -40,6 +49,10 @@ export const ServiceDiscoveryPage: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [loadingProviders, setLoadingProviders] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  // AI Assistant and match explanation state
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiMatchExplanations, setAiMatchExplanations] = useState<Record<string, AiMatchExplanation>>({});
 
   // Sync category param with filter state
   useEffect(() => {
@@ -111,6 +124,22 @@ export const ServiceDiscoveryPage: React.FC = () => {
       setProviders(res.results);
       setTotalResults(res.total);
       setTotalPages(res.totalPages || 1);
+
+      if (res.results.length > 0) {
+        try {
+          const rankRes = await AiClientService.rankProviders(
+            res.results.map((p) => p.id),
+            { categorySlug: category || undefined, taskDescription: keyword || undefined }
+          );
+          const map: Record<string, AiMatchExplanation> = {};
+          for (const item of rankRes.rankedProviders) {
+            map[item.providerProfileId] = item.matchExplanation;
+          }
+          setAiMatchExplanations(map);
+        } catch {
+          // AI ranking assistance failure must never break search
+        }
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unable to connect to search service';
       setSearchError(message);
@@ -169,6 +198,20 @@ export const ServiceDiscoveryPage: React.FC = () => {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAiModalOpen(true)}
+              style={{
+                borderColor: '#c7d2fe',
+                backgroundColor: '#eef2ff',
+                color: '#4338ca',
+                fontWeight: 600,
+              }}
+            >
+              <Sparkles size={14} className="mr-1.5 text-indigo-600" />
+              Describe with AI
+            </Button>
             <Link to="/request">
               <Button variant="primary" size="sm" leftIcon={<PlusCircle size={14} />}>
                 Request Custom Service
@@ -321,7 +364,10 @@ export const ServiceDiscoveryPage: React.FC = () => {
         ) : providers.length > 0 ? (
           <div className="space-y-4">
             {providers.map((p) => (
-              <ProviderResultCard key={p.id} provider={p} />
+              <div key={p.id}>
+                <ProviderResultCard provider={p} />
+                <AiMatchBadge matchExplanation={aiMatchExplanations[p.id]} />
+              </div>
             ))}
 
             {/* Pagination Controls */}
@@ -384,6 +430,19 @@ export const ServiceDiscoveryPage: React.FC = () => {
           />
         )}
       </div>
+
+      <AiServiceRequestModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        categories={categories}
+        onApplySearch={({ categorySlug, keyword: kw, date, time }) => {
+          if (categorySlug) setCategory(categorySlug);
+          if (kw) setKeyword(kw);
+          if (date) setPreferredDate(date);
+          if (time) setPreferredTime(time);
+          setPage(1);
+        }}
+      />
     </PageContainer>
   );
 };

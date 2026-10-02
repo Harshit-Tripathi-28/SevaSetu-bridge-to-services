@@ -1533,3 +1533,186 @@ export interface RestrictProviderInput {
   isRestricted: boolean;
   reason?: string;
 }
+
+/**
+ * ===================================================
+ * PHASE 8 — REAL AI / INTELLIGENT PLATFORM INTERFACES
+ * ===================================================
+ */
+
+export type AiProviderType = 'GEMINI' | 'OPENAI' | 'CUSTOM';
+
+export type AiFeature =
+  | 'SERVICE_REQUEST_PARSE'
+  | 'MATCHING_ASSISTANCE'
+  | 'REVIEW_SUMMARY'
+  | 'SUPPORT_ASSISTANT'
+  | 'PRICE_ANOMALY_DETECTION'
+  | 'DUPLICATE_PROFILE_DETECTION'
+  | 'DEMAND_FORECAST'
+  | 'REPEAT_SERVICE_RECOMMENDATION'
+  | 'PREDICTIVE_REMINDER';
+
+export type AiErrorCode =
+  | 'AI_CONFIG_MISSING'
+  | 'AI_PROVIDER_ERROR'
+  | 'AI_TIMEOUT'
+  | 'AI_RATE_LIMITED'
+  | 'AI_OUTPUT_VALIDATION_FAILED'
+  | 'AI_UNSUPPORTED_SERVICE'
+  | 'AI_INSUFFICIENT_DATA'
+  | 'AI_CONTEXT_FORBIDDEN';
+
+export interface AiServiceRequestIntent {
+  categorySlug: string | null;
+  serviceSlug: string | null;
+  intent: string;
+  urgency: 'NORMAL' | 'URGENT' | 'EMERGENCY';
+  requestedDate: string | null; // ISO YYYY-MM-DD
+  preferredStartTime: string | null; // HH:MM
+  preferredEndTime: string | null; // HH:MM
+  durationHours: number;
+  recurrence: 'ONE_OFF' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+  recurrenceDays: DayOfWeek[];
+  roomCount: number | null;
+  taskDescription: string;
+  matchedAddressId: string | null;
+  addressLabelHint: string | null; // e.g. "HOME"
+  preferences: string[];
+  constraints: string[];
+  missingFields: string[]; // e.g. ["DATE", "TIME", "ADDRESS", "SERVICE"]
+  confidence: number; // 0.0 to 1.0 (interpretation signal only)
+}
+
+export interface ParseServiceRequestInput {
+  text: string;
+  context?: {
+    currentDate?: string;
+    preferredCity?: string;
+    customerNotes?: string;
+  };
+}
+
+export interface ParseServiceRequestResponse {
+  structuredRequest: AiServiceRequestIntent;
+  missingFields: string[];
+  explanation: {
+    matchedCategoryName?: string;
+    matchedServiceName?: string;
+    normalizedDateTime?: string;
+    summary: string;
+  };
+  requiresConfirmation: boolean;
+  canProceedToSearch: boolean;
+  interpretationId?: string;
+}
+
+export interface ConfirmServiceRequestInput {
+  interpretationId?: string;
+  finalIntent: AiServiceRequestIntent;
+}
+
+export interface AiMatchExplanation {
+  providerProfileId: string;
+  rankingAssistanceScore: number; // 0 - 100
+  explanations: string[]; // factual reasons based on DB facts
+  preferenceAlignment: string;
+  verifiedBadgeMatch: boolean;
+  experienceMatch: boolean;
+  availabilityMatch: boolean;
+}
+
+export interface RankProvidersInput {
+  intent: Partial<AiServiceRequestIntent>;
+  providerIds: string[];
+}
+
+export interface RankProvidersResponse {
+  rankedProviders: {
+    providerProfileId: string;
+    aiScore: number;
+    matchExplanation: AiMatchExplanation;
+  }[];
+}
+
+export interface AiReviewSummaryRecord {
+  id: string;
+  providerProfileId: string;
+  summaryText: string;
+  positiveThemes: string[];
+  areasForImprovement: string[];
+  reviewCountAnalyzed: number;
+  averageRatingSnapshot: number;
+  model: string;
+  provider: string;
+  generatedAt: string;
+  isSufficientData: boolean;
+}
+
+export interface AiSupportRequestInput {
+  question: string;
+  bookingId?: string;
+}
+
+export interface AiSupportResponse {
+  answer: string;
+  suggestedActions: string[];
+  escalateToHuman: boolean;
+  escalationReason?: string | null;
+  relevantHelpTopic?: string | null;
+}
+
+export interface AiOperationalSignalRecord {
+  id: string;
+  signalType: 'PRICE_ANOMALY' | 'DUPLICATE_PROFILE' | 'DEMAND_SURGE';
+  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  entityType: 'BOOKING' | 'PROVIDER' | 'CATEGORY';
+  entityId: string;
+  details: Record<string, unknown>;
+  model: string;
+  provider: string;
+  status: 'PENDING_REVIEW' | 'ACKNOWLEDGED' | 'DISMISSED';
+  reviewedByAdminId?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+}
+
+export interface AiHealthStatus {
+  configured: boolean;
+  provider: string;
+  model: string;
+  operationalState: 'operational' | 'unconfigured' | 'rate_limited' | 'error';
+  timeoutMs: number;
+  maxOutputTokens: number;
+  enabled: boolean;
+}
+
+export interface AiTelemetrySummary {
+  totalCalls: number;
+  successRate: number;
+  avgLatencyMs: number;
+  featureUsageBreakdown: Record<string, number>;
+  failureBreakdown: Record<string, number>;
+  activeProvider: string;
+  activeModel: string;
+}
+
+export interface AiRepeatServiceRecommendation {
+  serviceId: string;
+  serviceTitle: string;
+  categoryTitle: string;
+  lastBookedDate: string;
+  suggestedProviderId?: string;
+  suggestedProviderName?: string;
+  rationale: string;
+}
+
+export interface AiPredictiveReminder {
+  serviceId?: string;
+  serviceTitle: string;
+  patternType: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+  suggestedDate: string;
+  suggestedDay: DayOfWeek;
+  explanation: string;
+}
+

@@ -20,6 +20,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Alert } from '../../components/ui/Alert';
+import { AiReviewSummaryCard } from '../../components/customer/reviews/AiReviewSummaryCard';
 import { providerService } from '../../services/provider.service';
 import type { PublicProviderProfile, ProviderServiceAreaRecord, AvailabilityCheckResponse } from '@sevasetu/shared';
 
@@ -305,6 +306,7 @@ export const ProviderProfilePage: React.FC = () => {
                 </h3>
                 <span className="text-xs text-neutral-600">Verified Marketplace Reviews</span>
               </div>
+              {id && <AiReviewSummaryCard providerProfileId={id} />}
               <Card variant="subtle" padding="md" className="text-center py-6">
                 <MessageSquare size={22} className="mx-auto text-neutral-400 mb-2" />
                 <p className="text-xs font-semibold text-neutral-900">No public customer reviews yet</p>

@@ -90,6 +90,10 @@ model User {
   trustSafetyCases       TrustSafetyCase[]      @relation("TrustSafetyAssignedAdmin")
   auditLogs              AuditLog[]             @relation("AuditLogActor")
 
+  // Phase 8 AI relations
+  aiInteractions           AiInteraction[]
+  aiRequestInterpretations AiRequestInterpretation[]
+
   @@index([email])
   @@index([role])
   @@index([status])
@@ -192,6 +196,7 @@ model ServiceProviderProfile {
   reviews               Review[]
   conversations         Conversation[]
   verificationRecords   VerificationRecord[]
+  aiReviewSummary       AiReviewSummary?
 
   @@index([userId])
   @@index([onboardingStatus])
@@ -1022,5 +1027,88 @@ model PlatformSetting {
   @@index([category])
 }
 
+// ===================================================
+// PHASE 8 — REAL AI / INTELLIGENT PLATFORM MODELS
+// ===================================================
 
+model AiInteraction {
+  id               String   @id @default(uuid())
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  feature          String   // "SERVICE_REQUEST_PARSE", "MATCHING_ASSISTANCE", "REVIEW_SUMMARY", "SUPPORT_ASSISTANT", etc.
+  provider         String   // "GEMINI", "OPENAI", etc.
+  model            String
+  promptHash       String?
+  structuredOutput Json?
+  validationPassed Boolean  @default(true)
+  latencyMs        Int
+  tokensUsed       Int?
+  isSuccess        Boolean  @default(true)
+  errorMessage     String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
 
+  @@index([userId])
+  @@index([feature])
+  @@index([createdAt])
+  @@index([isSuccess])
+}
+
+model AiRequestInterpretation {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rawTextHash        String
+  extractedIntent    Json
+  categorySlug       String?
+  serviceSlug        String?
+  isConfirmed        Boolean  @default(false)
+  confirmedBookingId String?
+  model              String
+  provider           String
+  createdAt          DateTime @default(now())
+
+  @@index([userId])
+  @@index([categorySlug])
+  @@index([serviceSlug])
+  @@index([createdAt])
+}
+
+model AiReviewSummary {
+  id                    String                 @id @default(uuid())
+  providerProfileId     String                 @unique
+  providerProfile       ServiceProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  summaryText           String
+  positiveThemes        String[]
+  areasForImprovement   String[]
+  reviewCountAnalyzed   Int
+  averageRatingSnapshot Float
+  model                 String
+  provider              String
+  generatedAt           DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([providerProfileId])
+  @@index([generatedAt])
+}
+
+model AiOperationalSignal {
+  id                String    @id @default(uuid())
+  signalType        String    // "PRICE_ANOMALY", "DUPLICATE_PROFILE", "DEMAND_SURGE"
+  severity          String    // "LOW", "MEDIUM", "HIGH"
+  entityType        String    // "BOOKING", "PROVIDER", "CATEGORY"
+  entityId          String
+  details           Json
+  model             String
+  provider          String
+  status            String    @default("PENDING_REVIEW") // "PENDING_REVIEW", "ACKNOWLEDGED", "DISMISSED"
+  reviewedByAdminId String?
+  reviewedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([signalType])
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([createdAt])
+}

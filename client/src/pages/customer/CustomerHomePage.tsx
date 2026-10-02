@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search,
@@ -9,17 +9,46 @@ import {
   ArrowRight,
   Activity,
   Layers,
+  Calendar,
+  RotateCcw,
 } from 'lucide-react';
 import { PageContainer } from '../../layouts/PageContainer';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
 import { ServiceCategoryGrid } from '../../components/customer/category/ServiceCategoryGrid';
 import { CORE_SERVICE_CATEGORIES } from '../../constants/categories';
+import { AiClientService } from '../../services/ai.service';
+import type { AiRepeatServiceRecommendation, AiPredictiveReminder } from '@sevasetu/shared';
 
 export const CustomerHomePage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [repeatRecommendations, setRepeatRecommendations] = useState<AiRepeatServiceRecommendation[]>([]);
+  const [predictiveReminders, setPredictiveReminders] = useState<AiPredictiveReminder[]>([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadAiInsights() {
+      try {
+        const [recs, rems] = await Promise.all([
+          AiClientService.getRepeatServices().catch(() => []),
+          AiClientService.getPredictiveReminders().catch(() => []),
+        ]);
+        if (isMounted) {
+          setRepeatRecommendations(recs);
+          setPredictiveReminders(rems);
+        }
+      } catch {
+        // AI insights optional; graceful silent fallback
+      }
+    }
+    loadAiInsights();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,14 +99,75 @@ export const CustomerHomePage: React.FC = () => {
 
             <div className="flex items-center justify-between text-xs text-neutral-600 px-3 pt-3">
               <span>Popular: Cleaning, Electrician, Plumber, Maid</span>
-              <Link to="/request" className="text-primary-700 font-semibold hover:underline flex items-center gap-1">
-                <span>Tell us what you need</span>
-                <ArrowRight size={12} />
+              <Link to="/services" className="text-indigo-600 font-semibold hover:underline flex items-center gap-1">
+                <Sparkles size={12} />
+                <span>Natural Language Search</span>
               </Link>
             </div>
           </div>
         </PageContainer>
       </section>
+
+      {/* AI Personalized Recommendations & Reminders (Only shown if history exists) */}
+      {(repeatRecommendations.length > 0 || predictiveReminders.length > 0) && (
+        <section>
+          <PageContainer maxWidth="lg" className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-indigo-600" />
+              <h2 className="text-lg font-bold text-neutral-900 tracking-tight">
+                Recommended For You
+              </h2>
+              <Badge variant="info" size="sm">Smart Suggestions</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {predictiveReminders.map((rem, i) => (
+                <Card key={i} variant="subtle" className="p-4 border-indigo-100 bg-indigo-50/30 flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700 shrink-0">
+                    <Calendar size={18} />
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider">{rem.serviceTitle}</span>
+                      <Badge variant="info" size="sm">{rem.patternType}</Badge>
+                    </div>
+                    <p className="text-xs text-neutral-700 leading-relaxed">{rem.explanation}</p>
+                    <div className="pt-1">
+                      <Link to={`/services?q=${encodeURIComponent(rem.serviceTitle)}`}>
+                        <Button variant="ghost" size="sm" className="text-xs h-7 text-indigo-700 pl-0">
+                          Book for {rem.suggestedDay} &rarr;
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+
+              {repeatRecommendations.map((rec, i) => (
+                <Card key={i} variant="subtle" className="p-4 border-neutral-200 bg-white flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-neutral-100 text-neutral-700 shrink-0">
+                    <RotateCcw size={18} />
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-neutral-900">{rec.serviceTitle}</span>
+                      <span className="text-[10px] text-neutral-500">Last: {rec.lastBookedDate}</span>
+                    </div>
+                    <p className="text-xs text-neutral-600">{rec.rationale}</p>
+                    <div className="pt-1">
+                      <Link to={`/services?q=${encodeURIComponent(rec.serviceTitle)}`}>
+                        <Button variant="outline" size="sm" className="text-xs h-7">
+                          Rebook Professional
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </PageContainer>
+        </section>
+      )}
 
       {/* 2. Core Service Categories Grid */}
       <section>

@@ -37,9 +37,20 @@ export interface ServerConfig {
     cancellationFreeWindowHours?: number;
     cancellationLateFeePercent?: number;
   };
+  ai: {
+    enabled: boolean;
+    provider: 'GEMINI' | 'OPENAI' | 'CUSTOM';
+    apiKey?: string;
+    model: string;
+    timeoutMs: number;
+    maxOutputTokens: number;
+  };
 }
 
 const nodeEnv = (process.env.NODE_ENV as ServerConfig['nodeEnv']) || 'development';
+
+const aiProvider = ((process.env.AI_PROVIDER || 'GEMINI').toUpperCase() as 'GEMINI' | 'OPENAI' | 'CUSTOM');
+const defaultAiModel = aiProvider === 'OPENAI' ? 'gpt-4o-mini' : 'gemini-1.5-flash';
 
 export const config: ServerConfig = {
   port: Number(process.env.PORT) || 5000,
@@ -79,6 +90,14 @@ export const config: ServerConfig = {
       process.env.CANCELLATION_LATE_FEE_PERCENT.trim() !== ''
         ? Number(process.env.CANCELLATION_LATE_FEE_PERCENT)
         : undefined,
+  },
+  ai: {
+    enabled: process.env.AI_ENABLED !== 'false',
+    provider: aiProvider,
+    apiKey: process.env.AI_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || undefined,
+    model: process.env.AI_MODEL || defaultAiModel,
+    timeoutMs: Number(process.env.AI_TIMEOUT_MS) || 15000,
+    maxOutputTokens: Number(process.env.AI_MAX_OUTPUT_TOKENS) || 2048,
   },
 };
 

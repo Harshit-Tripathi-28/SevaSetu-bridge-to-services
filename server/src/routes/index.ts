@@ -11,6 +11,7 @@ import notificationRouter from './notification.routes.js';
 import rebookingRouter from './rebooking.routes.js';
 import reportRouter from './report.routes.js';
 import adminRouter from './admin.routes.js';
+import { aiRouter } from './ai.routes.js';
 
 export const apiRouter = Router();
 
@@ -29,5 +30,6 @@ apiRouter.use(notificationRouter);
 apiRouter.use(rebookingRouter);
 apiRouter.use(reportRouter);
 apiRouter.use(adminRouter);
+apiRouter.use(aiRouter);
 
 
